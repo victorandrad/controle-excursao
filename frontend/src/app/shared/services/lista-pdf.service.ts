@@ -51,7 +51,9 @@ export class ListaPdfService {
     const body = ordenadas.map((i) => [
       i.numeroAssento != null ? String(i.numeroAssento) : '—',
       i.participante?.nome ?? '—',
-      i.participante?.telefone || i.participante?.cpf || '—',
+      i.participante?.cpf || '—',
+      i.participante?.rg || '—',
+      i.participante?.telefone || '—',
       i.quitado ? 'Quitado' : 'Pendente',
     ]);
 
@@ -59,14 +61,17 @@ export class ListaPdfService {
     autoTable(doc, {
       startY: 100,
       margin: { left: margin, right: margin },
-      head: [['Assento', 'Nome', 'Contato', 'Pagamento']],
+      head: [['Assento', 'Nome', 'CPF', 'RG', 'Telefone', 'Pagamento']],
       body,
-      styles: { fontSize: 9, cellPadding: 5, valign: 'middle' },
+      styles: { fontSize: 8.5, cellPadding: 4, valign: 'middle' },
       headStyles: { fillColor: [24, 144, 255], textColor: 255, fontStyle: 'bold' },
       alternateRowStyles: { fillColor: [245, 247, 250] },
       columnStyles: {
-        0: { halign: 'center', cellWidth: 60 },
-        3: { halign: 'center', cellWidth: 80 },
+        0: { halign: 'center', cellWidth: 42 },
+        2: { cellWidth: 80 },
+        3: { cellWidth: 70 },
+        4: { cellWidth: 82 },
+        5: { halign: 'center', cellWidth: 62 },
       },
       didDrawPage: (d) => {
         if (d.cursor) finalY = d.cursor.y;
