@@ -42,6 +42,8 @@ import {
   DownOutline,
   RightOutline,
   CheckOutline,
+  FilePdfOutline,
+  TrophyOutline,
 } from '@ant-design/icons-angular/icons';
 
 import { routes } from './app.routes';
@@ -84,6 +86,8 @@ const icons = [
   DownOutline,
   RightOutline,
   CheckOutline,
+  FilePdfOutline,
+  TrophyOutline,
 ];
 
 export const appConfig: ApplicationConfig = {

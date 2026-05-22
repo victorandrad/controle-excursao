@@ -17,6 +17,7 @@ import { NzMessageService } from 'ng-zorro-antd/message';
 import { NzToolTipModule } from 'ng-zorro-antd/tooltip';
 import { ApiService } from '../shared/services/api.service';
 import { ExcursaoAtivaService } from '../shared/services/excursao-ativa.service';
+import { ListaPdfService } from '../shared/services/lista-pdf.service';
 import { BrlPipe } from '../shared/pipes/brl.pipe';
 import { Inscricao, Participante } from '../shared/models';
 
@@ -232,7 +233,14 @@ interface FileiraAssentos {
   template: `
     <nz-page-header
       [nzTitle]="'Inscrições — ' + excursao.nome"
-      [nzSubtitle]="(excursao.valor | brl) + ' · ' + excursao.numParcelas + 'x · ' + rotuloVeiculo + ' (' + excursao.totalAssentos + ' assentos)'" />
+      [nzSubtitle]="(excursao.valor | brl) + ' · ' + excursao.numParcelas + 'x · ' + rotuloVeiculo + ' (' + excursao.totalAssentos + ' assentos)'">
+      <nz-page-header-extra>
+        <button nz-button nzType="primary" nzGhost
+                [nzLoading]="exportando" (click)="exportarPdf()">
+          <span nz-icon nzType="file-pdf"></span> Exportar PDF
+        </button>
+      </nz-page-header-extra>
+    </nz-page-header>
 
     <div class="root">
 
@@ -437,6 +445,7 @@ interface FileiraAssentos {
 })
 export class InscricoesComponent implements OnInit {
   excursaoAtiva = inject(ExcursaoAtivaService);
+  private listaPdf = inject(ListaPdfService);
 
   get excursao() { return this.excursaoAtiva.excursao()!; }
   get rotuloVeiculo(): string { return this.excursao.tipoVeiculo === 'van' ? 'Van' : 'Ônibus'; }
@@ -456,6 +465,7 @@ export class InscricoesComponent implements OnInit {
   carregando = false;
   buscandoParticipante = false;
   inscrevendo = false;
+  exportando = false;
 
   private buscaSubject = new Subject<string>();
 
@@ -631,6 +641,27 @@ export class InscricoesComponent implements OnInit {
       },
       error: (err) => {
         this.message.error(err?.error?.message ?? 'Erro ao atribuir assento');
+      },
+    });
+  }
+
+  // ── Exportar PDF ──
+  exportarPdf() {
+    this.exportando = true;
+    this.api.get<Inscricao[]>('inscricoes', { excursaoId: this.excursao.id }).subscribe({
+      next: (inscricoes) => {
+        const ativas = inscricoes.filter((i) => i.status !== 'cancelada');
+        if (ativas.length === 0) {
+          this.message.info('Nenhuma inscrição para exportar.');
+          this.exportando = false;
+          return;
+        }
+        this.listaPdf.gerarListaPassageiros(this.excursao, inscricoes);
+        this.exportando = false;
+      },
+      error: () => {
+        this.message.error('Erro ao gerar o PDF.');
+        this.exportando = false;
       },
     });
   }
