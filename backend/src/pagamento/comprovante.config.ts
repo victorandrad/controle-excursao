@@ -29,7 +29,9 @@ const MIME_POR_EXT: Record<string, string> = {
 
 /** Deriva o Content-Type a partir da extensão do arquivo salvo. */
 export function mimeDoArquivo(filename: string): string {
-  return MIME_POR_EXT[extname(filename).toLowerCase()] ?? 'application/octet-stream';
+  return (
+    MIME_POR_EXT[extname(filename).toLowerCase()] ?? 'application/octet-stream'
+  );
 }
 
 export const comprovanteMulterOptions: MulterOptions = {
