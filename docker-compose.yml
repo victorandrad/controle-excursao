@@ -1,0 +1,37 @@
+name: controle-excursao
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: controle_excursao
+      POSTGRES_USER: controle_excursao
+      POSTGRES_PASSWORD: controle_excursao
+    ports:
+      - '5433:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U controle_excursao']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+    ports:
+      - '3001:3000'
+    environment:
+      DATABASE_URL: postgresql://controle_excursao:controle_excursao@postgres:5432/controle_excursao
+      JWT_SECRET: change-me-in-production
+      JWT_EXPIRES_IN: 7d
+      PORT: 3000
+      CORS_ORIGIN: http://localhost:4201
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  postgres_data:

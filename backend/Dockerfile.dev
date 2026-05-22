@@ -1,0 +1,15 @@
+FROM node:20-bookworm-slim
+
+ENV DOCKERIZE_VERSION=v0.9.6
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends wget ca-certificates \
+    && wget -qO- https://github.com/jwilder/dockerize/releases/download/${DOCKERIZE_VERSION}/dockerize-linux-amd64-${DOCKERIZE_VERSION}.tar.gz | tar xzf - -C /usr/local/bin \
+    && apt-get autoremove -yqq --purge wget && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+COPY package*.json ./
+RUN npm install
+COPY . .
+RUN npx prisma generate && npm run build
+EXPOSE 3000
+CMD ["sh", "-c", "dockerize -wait tcp://postgres:5432 -timeout 60s && npx prisma migrate deploy && npm run db:seed:admin && node dist/main"]

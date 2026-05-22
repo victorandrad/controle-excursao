@@ -1,0 +1,128 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "debian-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum ExcursaoStatus {
+  aberta
+  encerrada
+}
+
+enum ParcelaStatus {
+  pendente
+  paga
+}
+
+enum InscricaoStatus {
+  ativa
+  cancelada
+}
+
+enum MetodoPagamento {
+  dinheiro
+  pix
+}
+
+enum UsuarioRole {
+  admin
+  tesoureiro
+}
+
+enum TipoVeiculo {
+  onibus
+  van
+}
+
+model Usuario {
+  id        String      @id @default(uuid())
+  nome      String
+  email     String      @unique
+  senhaHash String      @map("senha_hash")
+  role      UsuarioRole @default(tesoureiro)
+  criadoEm  DateTime    @default(now()) @map("criado_em")
+
+  pagamentos Pagamento[]
+
+  @@map("usuario")
+}
+
+model Excursao {
+  id            String         @id @default(uuid())
+  nome          String
+  destino       String
+  dataIda       DateTime       @map("data_ida") @db.Date
+  dataVolta     DateTime?      @map("data_volta") @db.Date
+  valor         Decimal        @map("valor") @db.Decimal(10, 2)
+  numParcelas   Int            @map("num_parcelas")
+  tipoVeiculo   TipoVeiculo    @default(onibus) @map("tipo_veiculo")
+  totalAssentos Int            @map("total_assentos")
+  status        ExcursaoStatus @default(aberta)
+  criadoEm      DateTime       @default(now()) @map("criado_em")
+
+  inscricoes Inscricao[]
+
+  @@map("excursao")
+}
+
+model Participante {
+  id       String   @id @default(uuid())
+  nome     String
+  cpf      String?  @unique
+  telefone String?
+  endereco String?
+  criadoEm DateTime @default(now()) @map("criado_em")
+
+  inscricoes Inscricao[]
+
+  @@map("participante")
+}
+
+model Inscricao {
+  id             String          @id @default(uuid())
+  excursaoId     String          @map("excursao_id")
+  participanteId String          @map("participante_id")
+  numeroAssento  Int?            @map("numero_assento")
+  status         InscricaoStatus @default(ativa)
+  criadoEm       DateTime        @default(now()) @map("criado_em")
+
+  excursao     Excursao     @relation(fields: [excursaoId], references: [id])
+  participante Participante @relation(fields: [participanteId], references: [id])
+  parcelas     Parcela[]
+
+  @@unique([excursaoId, numeroAssento])
+  @@map("inscricao")
+}
+
+model Parcela {
+  id          String        @id @default(uuid())
+  inscricaoId String        @map("inscricao_id")
+  numero      Int
+  status      ParcelaStatus @default(pendente)
+
+  inscricao  Inscricao   @relation(fields: [inscricaoId], references: [id])
+  pagamentos Pagamento[]
+
+  @@unique([inscricaoId, numero])
+  @@map("parcela")
+}
+
+model Pagamento {
+  id            String          @id @default(uuid())
+  parcelaId     String          @map("parcela_id")
+  usuarioId     String          @map("usuario_id")
+  valorPago     Decimal         @map("valor_pago") @db.Decimal(10, 2)
+  dataPagamento DateTime        @map("data_pagamento") @db.Date
+  criadoEm      DateTime        @default(now()) @map("criado_em")
+  metodo        MetodoPagamento
+  referencia    String?
+
+  parcela Parcela @relation(fields: [parcelaId], references: [id])
+  usuario Usuario @relation(fields: [usuarioId], references: [id])
+
+  @@map("pagamento")
+}

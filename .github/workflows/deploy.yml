@@ -1,0 +1,245 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  # ========================================================================
+  # BACKEND — install → (lint ‖ test) → build → deploy
+  # ========================================================================
+  backend-install:
+    name: Backend · install
+    runs-on: [self-hosted, controle-excursao]
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          clean: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: install (pula npm ci se o lock não mudou)
+        run: |
+          LOCK_HASH=$(sha256sum package-lock.json | cut -d' ' -f1)
+          if [ -f node_modules/.lock-hash ] && [ "$(cat node_modules/.lock-hash)" = "$LOCK_HASH" ]; then
+            echo "node_modules em dia (package-lock inalterado) — pulando npm ci"
+          else
+            echo "package-lock mudou ou node_modules ausente — rodando npm ci"
+            npm ci --no-audit --no-fund
+            echo "$LOCK_HASH" > node_modules/.lock-hash
+          fi
+
+  backend-lint:
+    name: Backend · lint
+    needs: backend-install
+    runs-on: [self-hosted, controle-excursao]
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          clean: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm run lint
+
+  backend-test:
+    name: Backend · test
+    needs: backend-install
+    runs-on: [self-hosted, controle-excursao]
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          clean: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: typecheck
+        run: npm run typecheck
+      - name: test
+        run: npm test
+
+  backend-build:
+    name: Backend · build
+    needs: [backend-lint, backend-test]
+    runs-on: [self-hosted, controle-excursao]
+    concurrency:
+      group: vps-rollout
+      cancel-in-progress: false
+    defaults:
+      run:
+        working-directory: /opt/ci/controle-excursao/app
+    steps:
+      - name: bootstrap app dir
+        working-directory: /tmp
+        run: |
+          if [ ! -d /opt/ci/controle-excursao/app/.git ]; then
+            echo "Inicializando /opt/ci/controle-excursao/app pela primeira vez..."
+            mkdir -p /opt/ci/controle-excursao
+            git clone https://github.com/${{ github.repository }}.git /opt/ci/controle-excursao/app
+          fi
+      - name: build
+        env:
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+        run: |
+          git pull origin main
+          cat > .env <<EOF
+          JWT_SECRET=$JWT_SECRET
+          POSTGRES_PASSWORD=$POSTGRES_PASSWORD
+          EOF
+          docker compose -f docker-compose.prod.yml build backend
+
+  backend-deploy:
+    name: Backend · deploy
+    needs: backend-build
+    runs-on: [self-hosted, controle-excursao]
+    concurrency:
+      group: vps-rollout
+      cancel-in-progress: false
+    defaults:
+      run:
+        working-directory: /opt/ci/controle-excursao/app
+    steps:
+      - run: |
+          docker compose -f docker-compose.prod.yml up -d backend --remove-orphans
+          docker image prune -f || true
+
+  # ========================================================================
+  # FRONTEND — install → (lint ‖ test) → build → deploy
+  # ========================================================================
+  frontend-install:
+    name: Frontend · install
+    runs-on: [self-hosted, controle-excursao]
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          clean: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: install (pula npm ci se o lock não mudou)
+        run: |
+          LOCK_HASH=$(sha256sum package-lock.json | cut -d' ' -f1)
+          if [ -f node_modules/.lock-hash ] && [ "$(cat node_modules/.lock-hash)" = "$LOCK_HASH" ]; then
+            echo "node_modules em dia (package-lock inalterado) — pulando npm ci"
+          else
+            echo "package-lock mudou ou node_modules ausente — rodando npm ci"
+            npm ci --no-audit --no-fund
+            echo "$LOCK_HASH" > node_modules/.lock-hash
+          fi
+
+  frontend-lint:
+    name: Frontend · lint
+    needs: frontend-install
+    runs-on: [self-hosted, controle-excursao]
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          clean: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm run lint
+
+  frontend-test:
+    name: Frontend · test
+    needs: frontend-install
+    runs-on: [self-hosted, controle-excursao]
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          clean: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: locate chrome
+        working-directory: /tmp
+        run: |
+          export PATH="$PATH:/usr/local/bin:/usr/bin:/snap/bin"
+          for path in \
+            /usr/bin/chromium \
+            /usr/bin/chromium-browser \
+            /usr/bin/google-chrome-stable \
+            /usr/bin/google-chrome \
+            /snap/bin/chromium \
+            /usr/local/bin/chromium \
+            /usr/local/bin/google-chrome \
+            $(command -v chromium 2>/dev/null) \
+            $(command -v chromium-browser 2>/dev/null) \
+            $(command -v google-chrome-stable 2>/dev/null) \
+            $(command -v google-chrome 2>/dev/null); do
+            if [ -x "$path" ]; then
+              echo "Encontrado: $path"
+              echo "CHROME_BIN=$path" >> "$GITHUB_ENV"
+              exit 0
+            fi
+          done
+          echo "::error::Nenhum binário do Chrome encontrado. Verifique a instalação no VPS:"
+          echo "  ls -la /usr/bin/chrom* /snap/bin/chrom* /usr/bin/google-chrome* 2>/dev/null"
+          exit 1
+      - name: test
+        run: npm run test:ci
+
+  frontend-build:
+    name: Frontend · build
+    needs: [frontend-lint, frontend-test]
+    runs-on: [self-hosted, controle-excursao]
+    concurrency:
+      group: vps-rollout
+      cancel-in-progress: false
+    defaults:
+      run:
+        working-directory: /opt/ci/controle-excursao/app
+    steps:
+      - name: bootstrap app dir
+        working-directory: /tmp
+        run: |
+          if [ ! -d /opt/ci/controle-excursao/app/.git ]; then
+            echo "Inicializando /opt/ci/controle-excursao/app pela primeira vez..."
+            mkdir -p /opt/ci/controle-excursao
+            git clone https://github.com/${{ github.repository }}.git /opt/ci/controle-excursao/app
+          fi
+      - name: build
+        env:
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+        run: |
+          git pull origin main
+          cat > .env <<EOF
+          JWT_SECRET=$JWT_SECRET
+          POSTGRES_PASSWORD=$POSTGRES_PASSWORD
+          EOF
+          docker compose -f docker-compose.prod.yml build frontend
+
+  frontend-deploy:
+    name: Frontend · deploy
+    needs: frontend-build
+    runs-on: [self-hosted, controle-excursao]
+    concurrency:
+      group: vps-rollout
+      cancel-in-progress: false
+    defaults:
+      run:
+        working-directory: /opt/ci/controle-excursao/app
+    steps:
+      - run: |
+          docker compose -f docker-compose.prod.yml up -d frontend --remove-orphans
+          docker image prune -f || true
