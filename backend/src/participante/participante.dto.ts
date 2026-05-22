@@ -7,8 +7,8 @@ export const CriarParticipanteSchema = z.object({
     .transform((v) => v.replace(/\D/g, ''))
     .pipe(z.string().regex(/^\d{11}$/))
     .optional(),
+  rg: z.string().optional(),
   telefone: z.string().optional(),
-  endereco: z.string().optional(),
 });
 
 export const AtualizarParticipanteSchema = CriarParticipanteSchema.omit({

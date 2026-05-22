@@ -24,8 +24,8 @@ export interface Participante {
   id: string;
   nome: string;
   cpf?: string | null;
+  rg?: string | null;
   telefone?: string | null;
-  endereco?: string | null;
   criadoEm: string;
 }
 

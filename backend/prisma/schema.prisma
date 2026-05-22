@@ -73,8 +73,8 @@ model Participante {
   id       String   @id @default(uuid())
   nome     String
   cpf      String?  @unique
+  rg       String?
   telefone String?
-  endereco String?
   criadoEm DateTime @default(now()) @map("criado_em")
 
   inscricoes Inscricao[]

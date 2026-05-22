@@ -200,8 +200,8 @@ import { Inscricao, Parcela, Participante } from '../shared/models';
             <th nzWidth="46px"></th>
             <th>Nome</th>
             <th nzWidth="130px">CPF</th>
+            <th nzWidth="130px">RG</th>
             <th nzWidth="140px">Telefone</th>
-            <th>Endereço</th>
             <th nzWidth="100px"></th>
           </tr>
         </thead>
@@ -212,8 +212,8 @@ import { Inscricao, Parcela, Participante } from '../shared/models';
             </td>
             <td class="nome-col">{{ p.nome }}</td>
             <td class="meta-col">{{ p.cpf || '—' }}</td>
+            <td class="meta-col">{{ p.rg || '—' }}</td>
             <td class="meta-col">{{ p.telefone || '—' }}</td>
-            <td class="meta-col">{{ p.endereco || '—' }}</td>
             <td>
               <div style="display:flex; gap:6px; align-items:center">
                 <button nz-button nzSize="small" nzType="default" (click)="abrirEdicao(p)">
@@ -292,16 +292,16 @@ import { Inscricao, Parcela, Participante } from '../shared/models';
             </nz-form-control>
           </nz-form-item>
           <nz-form-item>
+            <nz-form-label>RG</nz-form-label>
+            <nz-form-control>
+              <input nz-input formControlName="rg" placeholder="Número do RG" maxlength="20" />
+            </nz-form-control>
+          </nz-form-item>
+          <nz-form-item>
             <nz-form-label>Telefone</nz-form-label>
             <nz-form-control>
               <input nz-input formControlName="telefone" placeholder="(00) 00000-0000"
                      maxlength="15" (input)="mascaraTelefone($event)" />
-            </nz-form-control>
-          </nz-form-item>
-          <nz-form-item>
-            <nz-form-label>Endereço</nz-form-label>
-            <nz-form-control>
-              <input nz-input formControlName="endereco" placeholder="Rua, número, bairro" />
             </nz-form-control>
           </nz-form-item>
         </form>
@@ -391,8 +391,8 @@ export class ParticipantesListComponent implements OnInit, OnDestroy {
         if (!v) return null;
         return this.cpfValido(v) ? null : { cpfInvalido: true };
       }],
+      rg:       [''],
       telefone: [''],
-      endereco: [''],
     });
   }
 
@@ -507,7 +507,7 @@ export class ParticipantesListComponent implements OnInit, OnDestroy {
   abrirEdicao(p: Participante) {
     this.editando = p;
     this.form.reset();
-    this.form.patchValue({ nome: p.nome, telefone: p.telefone ?? '', endereco: p.endereco ?? '' });
+    this.form.patchValue({ nome: p.nome, rg: p.rg ?? '', telefone: p.telefone ?? '' });
     this.modalVisivel = true;
   }
 
@@ -521,8 +521,8 @@ export class ParticipantesListComponent implements OnInit, OnDestroy {
 
     if (this.editando) {
       const body: ParticipanteBody = { nome: v.nome ?? '' };
+      if (v.rg !== null) body.rg = v.rg;
       if (v.telefone !== null) body.telefone = v.telefone;
-      if (v.endereco !== null) body.endereco = v.endereco;
       this.api.patch<Participante>(`participantes/${this.editando.id}`, body).subscribe({
         next: () => {
           this.message.success('Participante atualizado!');
@@ -536,8 +536,8 @@ export class ParticipantesListComponent implements OnInit, OnDestroy {
     } else {
       const body: ParticipanteBody = { nome: v.nome ?? '' };
       if (v.cpf)      body.cpf      = v.cpf;
+      if (v.rg)       body.rg       = v.rg;
       if (v.telefone) body.telefone = v.telefone;
-      if (v.endereco) body.endereco = v.endereco;
       this.api.post<Participante>('participantes', body).subscribe({
         next: () => {
           this.message.success('Participante cadastrado!');
@@ -560,6 +560,6 @@ interface InscricaoComParcelas extends Inscricao {
 interface ParticipanteBody {
   nome: string;
   cpf?: string | null;
+  rg?: string | null;
   telefone?: string | null;
-  endereco?: string | null;
 }

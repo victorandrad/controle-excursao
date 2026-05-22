@@ -83,7 +83,7 @@ USUARIO        (1) ── (N) PAGAMENTO   (quem registrou)
 - **Excursao**: `id`, `nome`, `destino`, `dataIda` (Date), `dataVolta` (Date?),
   `valor` (Decimal), `numParcelas` (Int), `tipoVeiculo` (`onibus`|`van`),
   `totalAssentos` (Int), `status` (`aberta`|`encerrada`).
-- **Participante**: `id`, `nome`, `cpf?`, `telefone?`, `endereco?`.
+- **Participante**: `id`, `nome`, `cpf?`, `rg?`, `telefone?`.
 - **Inscricao**: `id`, `excursaoId`, `participanteId`, `numeroAssento` (Int?,
   nullable), `status` (`ativa`|`cancelada`), `criadoEm`.
 - **Parcela**: `id`, `inscricaoId`, `numero` (1..N), `status` (`pendente`|`paga`).
