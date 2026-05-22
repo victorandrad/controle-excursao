@@ -744,8 +744,11 @@ function localDateStr(d: Date): string {
               </button>
               <span *ngIf="comprovanteFile" style="margin-left:10px;font-size:13px;color:#555">
                 {{ comprovanteFile.name }}
-                <span nz-icon nzType="close" style="cursor:pointer;color:#aaa;margin-left:6px"
-                      (click)="removerComprovante()"></span>
+                <button nz-button nzType="link" nzSize="small" type="button"
+                        style="padding:0;height:auto;margin-left:6px;color:#aaa"
+                        aria-label="Remover arquivo" (click)="removerComprovante()">
+                  <span nz-icon nzType="close"></span>
+                </button>
               </span>
               <div *ngIf="comprovanteErro" style="color:#ff4d4f;font-size:12px;margin-top:6px">
                 {{ comprovanteErro }}
