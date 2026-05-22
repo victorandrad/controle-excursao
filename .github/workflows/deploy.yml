@@ -2,7 +2,7 @@ name: Deploy
 
 on:
   push:
-    branches: [main]
+    branches: [master]
 
 jobs:
   # ========================================================================
@@ -91,7 +91,7 @@ jobs:
           JWT_SECRET: ${{ secrets.JWT_SECRET }}
           POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
         run: |
-          git pull origin main
+          git pull origin master
           cat > .env <<EOF
           JWT_SECRET=$JWT_SECRET
           POSTGRES_PASSWORD=$POSTGRES_PASSWORD
@@ -222,7 +222,7 @@ jobs:
           JWT_SECRET: ${{ secrets.JWT_SECRET }}
           POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
         run: |
-          git pull origin main
+          git pull origin master
           cat > .env <<EOF
           JWT_SECRET=$JWT_SECRET
           POSTGRES_PASSWORD=$POSTGRES_PASSWORD
