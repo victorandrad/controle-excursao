@@ -43,7 +43,6 @@ import {
   RightOutline,
   CheckOutline,
   FilePdfOutline,
-  TrophyOutline,
   PaperClipOutline,
 } from '@ant-design/icons-angular/icons';
 
@@ -88,7 +87,6 @@ const icons = [
   RightOutline,
   CheckOutline,
   FilePdfOutline,
-  TrophyOutline,
   PaperClipOutline,
 ];
 

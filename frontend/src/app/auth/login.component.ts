@@ -79,7 +79,7 @@ import { AuthService } from './auth.service';
 
         <div class="brand">
           <div class="brand-icon">
-            <span nz-icon nzType="trophy" nzTheme="outline"></span>
+            <span nz-icon nzType="car" nzTheme="outline"></span>
           </div>
           <h1>Controle de Excursões</h1>
           <p>Sistema de gestão de excursões</p>
