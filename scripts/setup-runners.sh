@@ -12,25 +12,25 @@
 #
 # Variáveis de ambiente:
 #   GITHUB_PAT      (obrigatório)  PAT com permissão Administration:write no repo
-#   REPO            (default victorandrad/controle-carnes)
-#   LABEL           (default controle-carnes)
+#   REPO            (default victorandrad/controle-excursao)
+#   LABEL           (default controle-excursao)
 #   RUNNER_USER     (default runner)   usuário que roda os serviços
 #   RUNNER_VERSION  (default 2.334.0)
-#   BASE_DIR        (default /opt/ci/controle-carnes)
+#   BASE_DIR        (default /opt/ci/controle-excursao)
 #
 # Remover um runner depois:
-#   cd /opt/ci/controle-carnes/runner-N
+#   cd /opt/ci/controle-excursao/runner-N
 #   sudo ./svc.sh stop && sudo ./svc.sh uninstall
 #   ./config.sh remove --token <token-de-remoção-do-PAT>   # ou apague pela UI
 
 set -euo pipefail
 
 COUNT="${1:-2}"
-REPO="${REPO:-victorandrad/controle-carnes}"
-LABEL="${LABEL:-controle-carnes}"
+REPO="${REPO:-victorandrad/controle-excursao}"
+LABEL="${LABEL:-controle-excursao}"
 RUNNER_USER="${RUNNER_USER:-runner}"
 RUNNER_VERSION="${RUNNER_VERSION:-2.334.0}"
-BASE_DIR="${BASE_DIR:-/opt/ci/controle-carnes}"
+BASE_DIR="${BASE_DIR:-/opt/ci/controle-excursao}"
 PAT="${GITHUB_PAT:?defina GITHUB_PAT com um token de admin do repo}"
 
 TARBALL="actions-runner-linux-x64-${RUNNER_VERSION}.tar.gz"
