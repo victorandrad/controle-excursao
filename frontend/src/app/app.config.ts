@@ -44,6 +44,7 @@ import {
   CheckOutline,
   FilePdfOutline,
   TrophyOutline,
+  PaperClipOutline,
 } from '@ant-design/icons-angular/icons';
 
 import { routes } from './app.routes';
@@ -88,6 +89,7 @@ const icons = [
   CheckOutline,
   FilePdfOutline,
   TrophyOutline,
+  PaperClipOutline,
 ];
 
 export const appConfig: ApplicationConfig = {

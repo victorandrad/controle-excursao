@@ -30,6 +30,8 @@ services:
       PORT: 3000
       CORS_ORIGIN: https://gestaoexcursao.victorandra.de
       TZ: America/Sao_Paulo
+    volumes:
+      - uploads_data:/app/uploads
     depends_on:
       postgres:
         condition: service_healthy
@@ -60,3 +62,4 @@ networks:
 
 volumes:
   postgres_data:
+  uploads_data:

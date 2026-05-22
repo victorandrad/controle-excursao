@@ -23,7 +23,7 @@ import { NzMessageService } from 'ng-zorro-antd/message';
 import { ApiService } from '../shared/services/api.service';
 import { BrlPipe } from '../shared/pipes/brl.pipe';
 import { ExcursaoAtivaService } from '../shared/services/excursao-ativa.service';
-import { Inscricao, MetodoPagamento, Parcela, Participante } from '../shared/models';
+import { Inscricao, Pagamento, Parcela, Participante } from '../shared/models';
 
 function localDateStr(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -596,6 +596,12 @@ function localDateStr(d: Date): string {
                       <span *ngIf="p.pagamentos?.[0]?.referencia" style="color:#aaa">
                         &nbsp;· {{ p.pagamentos?.[0]?.referencia }}
                       </span>
+                      <button *ngIf="p.pagamentos?.[0]?.comprovante"
+                              nz-button nzType="link" nzSize="small"
+                              style="padding:0 4px;height:auto"
+                              (click)="verComprovante(p.pagamentos?.[0])">
+                        <span nz-icon nzType="paper-clip"></span> comprovante
+                      </button>
                     </div>
                     <div class="parcela-detalhe" *ngIf="p.status === 'pendente'">
                       Aguardando pagamento
@@ -721,9 +727,32 @@ function localDateStr(d: Date): string {
           </nz-form-item>
 
           <nz-form-item *ngIf="form.value.metodo === 'pix'" style="margin-top:12px;margin-bottom:0">
-            <nz-form-label nzRequired>ID / Comprovante da transação Pix</nz-form-label>
-            <nz-form-control nzErrorTip="Obrigatório para pagamento Pix">
+            <nz-form-label>Referência (opcional)</nz-form-label>
+            <nz-form-control>
               <input nz-input formControlName="referencia" placeholder="Código ou ID da transação" />
+            </nz-form-control>
+          </nz-form-item>
+
+          <nz-form-item *ngIf="form.value.metodo === 'pix'" style="margin-top:12px;margin-bottom:0">
+            <nz-form-label nzRequired>Comprovante (imagem ou PDF)</nz-form-label>
+            <nz-form-control>
+              <input #fileInput type="file" accept="image/*,application/pdf" hidden
+                     (change)="onComprovanteSelected($event)" />
+              <button nz-button type="button" (click)="fileInput.click()">
+                <span nz-icon nzType="paper-clip"></span>
+                {{ comprovanteFile ? 'Trocar arquivo' : 'Selecionar arquivo' }}
+              </button>
+              <span *ngIf="comprovanteFile" style="margin-left:10px;font-size:13px;color:#555">
+                {{ comprovanteFile.name }}
+                <span nz-icon nzType="close" style="cursor:pointer;color:#aaa;margin-left:6px"
+                      (click)="removerComprovante()"></span>
+              </span>
+              <div *ngIf="comprovanteErro" style="color:#ff4d4f;font-size:12px;margin-top:6px">
+                {{ comprovanteErro }}
+              </div>
+              <div style="color:#aaa;font-size:11px;margin-top:6px">
+                Imagem (JPG, PNG, WEBP, GIF) ou PDF, até 5MB.
+              </div>
             </nz-form-control>
           </nz-form-item>
 
@@ -749,6 +778,8 @@ export class PagamentosComponent implements OnInit {
   modalVisivel = false;
   registrando = false;
   avisoRetroativo = false;
+  comprovanteFile: File | null = null;
+  comprovanteErro = '';
 
   form!: ReturnType<typeof this.criarForm>;
   private buscaSubject = new Subject<string>();
@@ -889,6 +920,8 @@ export class PagamentosComponent implements OnInit {
   abrirPagamento(parcela: Parcela) {
     this.parcelaSelecionada = parcela;
     this.avisoRetroativo = false;
+    this.comprovanteFile = null;
+    this.comprovanteErro = '';
     this.valorPagoDisplay = this.valorParcela.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     this.form.patchValue({
       valorPago:     this.valorParcela,
@@ -912,14 +945,51 @@ export class PagamentosComponent implements OnInit {
   }
 
   onMetodoChange() {
-    const ref = this.form.get('referencia')!;
-    if (this.form.value.metodo === 'pix') {
-      ref.setValidators(Validators.required);
-    } else {
-      ref.clearValidators();
-      ref.setValue('');
+    // Referência é sempre opcional; ao sair do Pix, limpa anexo e referência.
+    if (this.form.value.metodo !== 'pix') {
+      this.form.get('referencia')!.setValue('');
+      this.comprovanteFile = null;
+      this.comprovanteErro = '';
     }
-    ref.updateValueAndValidity();
+  }
+
+  onComprovanteSelected(event: Event) {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0] ?? null;
+    this.comprovanteErro = '';
+    if (file) {
+      const tipoOk = file.type.startsWith('image/') || file.type === 'application/pdf';
+      if (!tipoOk) {
+        this.comprovanteErro = 'O arquivo deve ser uma imagem ou PDF.';
+        this.comprovanteFile = null;
+        input.value = '';
+        return;
+      }
+      if (file.size > 5 * 1024 * 1024) {
+        this.comprovanteErro = 'O arquivo excede o limite de 5MB.';
+        this.comprovanteFile = null;
+        input.value = '';
+        return;
+      }
+    }
+    this.comprovanteFile = file;
+  }
+
+  removerComprovante() {
+    this.comprovanteFile = null;
+    this.comprovanteErro = '';
+  }
+
+  verComprovante(pagamento?: Pagamento) {
+    if (!pagamento?.id) return;
+    this.api.getBlob(`pagamentos/${pagamento.id}/comprovante`).subscribe({
+      next: (blob) => {
+        const url = URL.createObjectURL(blob);
+        window.open(url, '_blank');
+        setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      },
+      error: () => this.message.error('Não foi possível abrir o comprovante.'),
+    });
   }
 
   confirmarPagamento() {
@@ -928,17 +998,21 @@ export class PagamentosComponent implements OnInit {
       return;
     }
     const v = this.form.value;
+    if (v.metodo === 'pix' && !this.comprovanteFile) {
+      this.comprovanteErro = 'Anexe o comprovante do Pix (imagem ou PDF).';
+      return;
+    }
     const data = v.dataPagamento as Date;
-    const body: PagamentoBody = {
-      parcelaId:     this.parcelaSelecionada!.id,
-      valorPago:     Number(v.valorPago),
-      dataPagamento: localDateStr(data),
-      metodo:        v.metodo as MetodoPagamento,
-    };
-    if (v.referencia) body.referencia = v.referencia;
+    const fd = new FormData();
+    fd.append('parcelaId', this.parcelaSelecionada!.id);
+    fd.append('valorPago', String(Number(v.valorPago)));
+    fd.append('dataPagamento', localDateStr(data));
+    fd.append('metodo', v.metodo as string);
+    if (v.referencia) fd.append('referencia', v.referencia);
+    if (this.comprovanteFile) fd.append('comprovante', this.comprovanteFile);
 
     this.registrando = true;
-    this.api.post<PagamentoResposta>('pagamentos', body).subscribe({
+    this.api.upload<PagamentoResposta>('pagamentos', fd).subscribe({
       next: (res) => {
         const aviso = res.avisoRetroativo ? ' — atenção: data retroativa > 30 dias' : '';
         this.message.success(`Pagamento registrado com sucesso!${aviso}`);
@@ -957,14 +1031,6 @@ export class PagamentosComponent implements OnInit {
 interface InscricaoComParcelas extends Inscricao {
   parcelas: Parcela[];
   quitado?: boolean;
-}
-
-interface PagamentoBody {
-  parcelaId: string;
-  valorPago: number;
-  dataPagamento: string;
-  metodo: MetodoPagamento;
-  referencia?: string;
 }
 
 interface PagamentoResposta {

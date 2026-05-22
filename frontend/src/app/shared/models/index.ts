@@ -59,6 +59,7 @@ export interface Pagamento {
   criadoEm: string;
   metodo: MetodoPagamento;
   referencia?: string | null;
+  comprovante?: string | null;
 }
 
 export interface Usuario {
