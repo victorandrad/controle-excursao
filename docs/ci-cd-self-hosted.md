@@ -5,7 +5,7 @@ para qualquer outro repositório que vá rodar no mesmo VPS.
 
 > **Convenção em todo o doc:** troque `<PROJETO>` pelo identificador do projeto
 > (kebab-case, ex: `controle-excursao`), `<ORG>` pelo dono do repo (ex:
-> `victorandrad`) e `<DOMINIO>` pelo host público (ex: `gestaocampanha.victorandra.de`).
+> `victorandrad`) e `<DOMINIO>` pelo host público (ex: `gestaoexcursao.victorandra.de`).
 
 ---
 
