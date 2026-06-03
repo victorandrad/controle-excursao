@@ -1,7 +1,7 @@
 import { Injectable } from '@angular/core';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { Excursao, Inscricao } from '../models';
+import { Excursao, Inscricao, Parcela } from '../models';
 
 @Injectable({ providedIn: 'root' })
 export class ListaPdfService {
@@ -54,24 +54,24 @@ export class ListaPdfService {
       i.participante?.cpf || '—',
       i.participante?.rg || '—',
       i.participante?.telefone || '—',
-      i.quitado ? 'Quitado' : 'Pendente',
+      this.formatarParcelas(i.parcelas),
     ]);
 
     let finalY = 100;
     autoTable(doc, {
       startY: 100,
       margin: { left: margin, right: margin },
-      head: [['Assento', 'Nome', 'CPF', 'RG', 'Telefone', 'Pagamento']],
+      head: [['Assento', 'Nome', 'CPF', 'RG', 'Telefone', 'Parcelas']],
       body,
       styles: { fontSize: 8.5, cellPadding: 4, valign: 'middle' },
       headStyles: { fillColor: [24, 144, 255], textColor: 255, fontStyle: 'bold' },
       alternateRowStyles: { fillColor: [245, 247, 250] },
       columnStyles: {
-        0: { halign: 'center', cellWidth: 42 },
-        2: { cellWidth: 80 },
-        3: { cellWidth: 70 },
-        4: { cellWidth: 82 },
-        5: { halign: 'center', cellWidth: 62 },
+        0: { halign: 'center', cellWidth: 40 },
+        2: { cellWidth: 75 },
+        3: { cellWidth: 65 },
+        4: { cellWidth: 78 },
+        5: { halign: 'center', cellWidth: 82 },
       },
       didDrawPage: (d) => {
         if (d.cursor) finalY = d.cursor.y;
@@ -91,6 +91,22 @@ export class ListaPdfService {
     doc.text(`Gerado em ${this.formatarDataHora(new Date())}`, margin, finalY + 36);
 
     doc.save(`passageiros-${this.slug(excursao.nome)}.pdf`);
+  }
+
+  /**
+   * Formata o estado das parcelas:
+   *  - todas pagas → "Quitado"
+   *  - nenhuma paga → "— (0/N)"
+   *  - algumas pagas → "1, 3 (2/N)" (lista os números pagos)
+   */
+  private formatarParcelas(parcelas: Parcela[] | undefined): string {
+    const lista = (parcelas ?? []).slice().sort((a, b) => a.numero - b.numero);
+    const total = lista.length;
+    if (total === 0) return '—';
+    const pagas = lista.filter((p) => p.status === 'paga').map((p) => p.numero);
+    if (pagas.length === total) return 'Quitado';
+    if (pagas.length === 0) return `— (0/${total})`;
+    return `${pagas.join(', ')} (${pagas.length}/${total})`;
   }
 
   /** ISO (yyyy-mm-dd...) -> dd/mm/yyyy, sem deslocamento de fuso. */
