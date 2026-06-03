@@ -676,11 +676,12 @@ export class InscricoesComponent implements OnInit {
 
   private confirmarTroca(ocupante: { id: string; nome: string }, n: number) {
     const meu = this.assentoDaInscricao;
+    const nomeSel = this.participanteSelecionado?.nome ?? 'Participante';
     const detalhe = meu != null
-      ? `Você ficará com o assento ${n} e ${ocupante.nome} ficará com o assento ${meu}.`
-      : `Você ficará com o assento ${n} e ${ocupante.nome} ficará sem assento.`;
+      ? `${nomeSel} ficará com o assento ${n} e ${ocupante.nome} ficará com o assento ${meu}.`
+      : `${nomeSel} ficará com o assento ${n} e ${ocupante.nome} ficará sem assento.`;
     this.modal.confirm({
-      nzTitle: `Trocar de lugar com ${ocupante.nome}?`,
+      nzTitle: `Trocar os lugares entre ${nomeSel} e ${ocupante.nome}?`,
       nzContent: detalhe,
       nzOkText: 'Trocar',
       nzCancelText: 'Cancelar',

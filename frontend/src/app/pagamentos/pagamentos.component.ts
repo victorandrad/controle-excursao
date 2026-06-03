@@ -604,11 +604,15 @@ function localDateStr(d: Date): string {
                       </button>
                     </div>
                     <div class="parcela-detalhe" *ngIf="p.status === 'pendente'">
-                      Aguardando pagamento
+                      <ng-container *ngIf="pagoNaParcela(p) > 0; else aguardando">
+                        Parcial: {{ pagoNaParcela(p) | brl }} de {{ valorParcela | brl }}
+                        &nbsp;·&nbsp; falta {{ restanteDaParcela(p) | brl }}
+                      </ng-container>
+                      <ng-template #aguardando>Aguardando pagamento</ng-template>
                     </div>
                   </div>
                   <div class="parcela-valor" [class.paga]="p.status === 'paga'" [class.pendente]="p.status === 'pendente'">
-                    <span *ngIf="p.status === 'paga'">{{ p.pagamentos?.[0]?.valorPago | brl }}</span>
+                    <span *ngIf="p.status === 'paga'">{{ pagoNaParcela(p) | brl }}</span>
                     <button *ngIf="p.status === 'pendente'"
                             nz-button nzType="primary" nzSize="small"
                             (click)="abrirPagamento(p)">
@@ -636,7 +640,10 @@ function localDateStr(d: Date): string {
                       {{ p.pagamentos?.[0]?.valorPago | brl }}
                     </div>
                     <div class="pim-detalhe" *ngIf="p.status === 'pendente'">
-                      Aguardando pagamento &nbsp;·&nbsp; {{ valorParcela | brl }}
+                      <ng-container *ngIf="pagoNaParcela(p) > 0; else aguardandoM">
+                        Parcial: {{ pagoNaParcela(p) | brl }} / {{ valorParcela | brl }}
+                      </ng-container>
+                      <ng-template #aguardandoM>Aguardando &nbsp;·&nbsp; {{ valorParcela | brl }}</ng-template>
                     </div>
                   </div>
                   <button *ngIf="p.status === 'pendente'"
@@ -682,6 +689,15 @@ function localDateStr(d: Date): string {
           nzMessage="Data retroativa superior a 30 dias"
           style="margin-bottom:16px"
           nzShowIcon />
+
+        <nz-alert *ngIf="previewDistribuicao && (previewDistribuicao.cobre > 1 || previewDistribuicao.parcial)"
+          nzType="info" nzShowIcon style="margin-bottom:16px"
+          [nzMessage]="(previewDistribuicao.cobre ? previewDistribuicao.cobre + ' parcela(s) serão quitadas' : '')
+            + (previewDistribuicao.parcial ? (previewDistribuicao.cobre ? '; ' : '') + 'parcial de ' + (previewDistribuicao.parcial.valor | brl) + ' na parcela ' + pad(previewDistribuicao.parcial.numero) : '')" />
+
+        <nz-alert *ngIf="previewDistribuicao && previewDistribuicao.sobra > 0"
+          nzType="error" nzShowIcon style="margin-bottom:16px"
+          [nzMessage]="'Valor excede o total devido em ' + (previewDistribuicao.sobra | brl)" />
 
         <form nz-form [formGroup]="form" nzLayout="vertical">
 
@@ -893,6 +909,46 @@ export class PagamentosComponent implements OnInit {
     return Number(e.valor) / e.numParcelas;
   }
 
+  /** Soma de tudo já pago numa parcela (útil para parcelas parciais ou múltiplos pagamentos). */
+  pagoNaParcela(p: Parcela): number {
+    return (p.pagamentos ?? []).reduce(
+      (acc, pg) => acc + Number(pg.valorPago),
+      0,
+    );
+  }
+
+  /** Quanto ainda falta pra quitar a parcela (valorParcela − jáPago). */
+  restanteDaParcela(p: Parcela): number {
+    return Math.max(0, this.valorParcela - this.pagoNaParcela(p));
+  }
+
+  /** Preview de como o valor digitado será distribuído entre as parcelas pendentes. */
+  get previewDistribuicao(): { cobre: number; parcial: { numero: number; valor: number } | null; sobra: number } | null {
+    const insc = this.inscricaoSelecionada;
+    if (!this.parcelaSelecionada || !insc) return null;
+    const valor = Number(this.form.value.valorPago) || 0;
+    if (valor <= 0) return null;
+    const pendentes = insc.parcelas
+      .filter((x) => x.status !== 'paga' && x.numero >= this.parcelaSelecionada!.numero)
+      .sort((a, b) => a.numero - b.numero);
+    let restante = valor;
+    let cobre = 0;
+    let parcial: { numero: number; valor: number } | null = null;
+    for (const p of pendentes) {
+      if (restante < 0.005) break;
+      const faltando = this.restanteDaParcela(p);
+      if (faltando < 0.005) continue;
+      if (restante >= faltando - 0.005) {
+        cobre++;
+        restante = Math.max(0, restante - faltando);
+      } else {
+        parcial = { numero: p.numero, valor: Math.round(restante * 100) / 100 };
+        restante = 0;
+      }
+    }
+    return { cobre, parcial, sobra: Math.round(restante * 100) / 100 };
+  }
+
   get inscricoesQuitadas(): number {
     return this.inscricoes.filter(c => c.quitado).length;
   }
@@ -925,9 +981,10 @@ export class PagamentosComponent implements OnInit {
     this.avisoRetroativo = false;
     this.comprovanteFile = null;
     this.comprovanteErro = '';
-    this.valorPagoDisplay = this.valorParcela.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const inicial = this.restanteDaParcela(parcela);
+    this.valorPagoDisplay = inicial.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     this.form.patchValue({
-      valorPago:     this.valorParcela,
+      valorPago:     inicial,
       dataPagamento: new Date(),
       metodo:        'dinheiro',
       referencia:    '',
@@ -1017,8 +1074,16 @@ export class PagamentosComponent implements OnInit {
     this.registrando = true;
     this.api.upload<PagamentoResposta>('pagamentos', fd).subscribe({
       next: (res) => {
-        const aviso = res.avisoRetroativo ? ' — atenção: data retroativa > 30 dias' : '';
-        this.message.success(`Pagamento registrado com sucesso!${aviso}`);
+        const partes: string[] = [];
+        if (res.parcelasCobertas && res.parcelasCobertas > 0) {
+          partes.push(`${res.parcelasCobertas} parcela(s) quitada(s)`);
+        }
+        if (res.parcial) {
+          partes.push('valor parcial registrado na próxima');
+        }
+        const detalhe = partes.length ? ` — ${partes.join(', ')}` : '';
+        const aviso = res.avisoRetroativo ? ' (atenção: data > 30 dias)' : '';
+        this.message.success(`Pagamento registrado${detalhe}${aviso}`);
         this.fecharModal();
         this.carregarInscricoes();
         this.registrando = false;
@@ -1038,5 +1103,7 @@ interface InscricaoComParcelas extends Inscricao {
 
 interface PagamentoResposta {
   id?: string;
+  parcelasCobertas?: number;
+  parcial?: boolean;
   avisoRetroativo?: boolean;
 }
