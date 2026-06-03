@@ -180,7 +180,11 @@ export class PagamentoService {
         });
 
         // Se substituímos o comprovante e o antigo não é mais usado, apaga.
-        if (comprovanteNovo && comprovanteAntigo && comprovanteAntigo !== comprovanteNovo) {
+        if (
+          comprovanteNovo &&
+          comprovanteAntigo &&
+          comprovanteAntigo !== comprovanteNovo
+        ) {
           const aindaUsado = await tx.pagamento.count({
             where: { comprovante: comprovanteAntigo },
           });
