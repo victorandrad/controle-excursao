@@ -93,7 +93,7 @@ function localDateStr(d: Date): string {
     }
     .part-item .pi-info { flex: 1; min-width: 0; }
     .part-item .pi-nome { font-weight: 500; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .part-item .pi-cpf  { font-size: 12px; color: #aaa; margin-top: 1px; }
+    .part-item .pi-rg   { font-size: 12px; color: #aaa; margin-top: 1px; }
     .part-item .pi-arrow { color: #d9d9d9; font-size: 12px; flex-shrink: 0; }
 
     /* ── mobile step-2 sticky header ─────────────────── */
@@ -389,7 +389,7 @@ function localDateStr(d: Date): string {
             <thead>
               <tr>
                 <th>Nome</th>
-                <th nzWidth="90px" style="color:#aaa">CPF</th>
+                <th nzWidth="90px" style="color:#aaa">RG</th>
               </tr>
             </thead>
             <tbody>
@@ -398,7 +398,7 @@ function localDateStr(d: Date): string {
                   [class.ativo]="p.id === participanteId"
                   (click)="selecionarParticipante(p)">
                 <td>{{ p.nome }}</td>
-                <td style="font-size:11px; color:#aaa">{{ p.cpf || '—' }}</td>
+                <td style="font-size:11px; color:#aaa">{{ p.rg || '—' }}</td>
               </tr>
             </tbody>
           </nz-table>
@@ -423,7 +423,7 @@ function localDateStr(d: Date): string {
               <div class="pi-avatar">{{ iniciaisParticipante(p) }}</div>
               <div class="pi-info">
                 <div class="pi-nome">{{ p.nome }}</div>
-                <div class="pi-cpf" *ngIf="p.cpf">{{ p.cpf }}</div>
+                <div class="pi-rg" *ngIf="p.rg">{{ p.rg }}</div>
               </div>
               <span nz-icon nzType="right" class="pi-arrow"></span>
             </div>
