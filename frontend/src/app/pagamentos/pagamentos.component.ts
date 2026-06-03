@@ -1,5 +1,6 @@
-import { Component, OnInit, inject } from '@angular/core';
+import { Component, OnDestroy, OnInit, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
 import { ReactiveFormsModule, FormsModule, FormBuilder, Validators } from '@angular/forms';
 import { debounceTime, distinctUntilChanged, Subject, switchMap } from 'rxjs';
 import { NzPageHeaderModule } from 'ng-zorro-antd/page-header';
@@ -652,6 +653,13 @@ function localDateStr(d: Date): string {
                           style="flex-shrink:0">
                     <span nz-icon nzType="dollar"></span>
                   </button>
+                  <button *ngIf="p.status === 'paga' && p.pagamentos?.[0]?.comprovante"
+                          nz-button nzSize="default"
+                          (click)="verComprovante(p.pagamentos?.[0])"
+                          style="flex-shrink:0"
+                          aria-label="Ver comprovante">
+                    <span nz-icon nzType="paper-clip"></span>
+                  </button>
                   <span *ngIf="p.status === 'paga'"
                         nz-icon nzType="check-circle" nzTheme="outline"
                         style="color:#52c41a; font-size:20px; flex-shrink:0"></span>
@@ -778,10 +786,45 @@ function localDateStr(d: Date): string {
         </form>
       </ng-container>
     </nz-modal>
+
+    <!-- Modal: visualizar comprovante (imagem ou PDF) -->
+    <nz-modal
+      [(nzVisible)]="comprovanteModalVisivel"
+      nzTitle="Comprovante de pagamento"
+      [nzFooter]="null"
+      (nzOnCancel)="fecharComprovante()"
+      nzWidth="720px">
+      <ng-container *nzModalContent>
+        <div *ngIf="!comprovanteUrlSafe" style="text-align:center;padding:32px;color:#888">
+          Carregando comprovante...
+        </div>
+        <div *ngIf="comprovanteUrlSafe && comprovanteTipo === 'image'"
+             style="display:flex;justify-content:center;align-items:center;background:#fafafa;border-radius:6px;padding:8px">
+          <img [src]="comprovanteUrlRaw" alt="Comprovante"
+               style="max-width:100%;max-height:70vh;object-fit:contain" />
+        </div>
+        <iframe *ngIf="comprovanteUrlSafe && comprovanteTipo === 'pdf'"
+                [src]="comprovanteUrlSafe"
+                style="width:100%;height:70vh;border:1px solid #f0f0f0;border-radius:6px"
+                title="Comprovante"></iframe>
+        <div *ngIf="comprovanteUrlRaw" style="margin-top:12px;text-align:right">
+          <a [href]="comprovanteUrlRaw" target="_blank" rel="noopener" nz-button nzType="link">
+            <span nz-icon nzType="paper-clip"></span> Abrir em nova aba
+          </a>
+        </div>
+      </ng-container>
+    </nz-modal>
   `,
 })
-export class PagamentosComponent implements OnInit {
+export class PagamentosComponent implements OnInit, OnDestroy {
   excursaoAtiva = inject(ExcursaoAtivaService);
+  private sanitizer = inject(DomSanitizer);
+
+  // Visualização de comprovante (modal inline)
+  comprovanteModalVisivel = false;
+  comprovanteUrlSafe: SafeResourceUrl | null = null;
+  comprovanteUrlRaw: string | null = null;
+  comprovanteTipo: 'pdf' | 'image' | null = null;
 
   participantes: Participante[] = [];
   participanteId: string | null = null;
@@ -1044,12 +1087,30 @@ export class PagamentosComponent implements OnInit {
     if (!pagamento?.id) return;
     this.api.getBlob(`pagamentos/${pagamento.id}/comprovante`).subscribe({
       next: (blob) => {
+        // Limpa URL anterior (se reabrir outro comprovante)
+        if (this.comprovanteUrlRaw) URL.revokeObjectURL(this.comprovanteUrlRaw);
         const url = URL.createObjectURL(blob);
-        window.open(url, '_blank');
-        setTimeout(() => URL.revokeObjectURL(url), 60_000);
+        this.comprovanteUrlRaw = url;
+        this.comprovanteUrlSafe = this.sanitizer.bypassSecurityTrustResourceUrl(url);
+        this.comprovanteTipo = blob.type === 'application/pdf' ? 'pdf' : 'image';
+        this.comprovanteModalVisivel = true;
       },
       error: () => this.message.error('Não foi possível abrir o comprovante.'),
     });
+  }
+
+  fecharComprovante() {
+    this.comprovanteModalVisivel = false;
+    if (this.comprovanteUrlRaw) {
+      URL.revokeObjectURL(this.comprovanteUrlRaw);
+      this.comprovanteUrlRaw = null;
+    }
+    this.comprovanteUrlSafe = null;
+    this.comprovanteTipo = null;
+  }
+
+  ngOnDestroy() {
+    if (this.comprovanteUrlRaw) URL.revokeObjectURL(this.comprovanteUrlRaw);
   }
 
   confirmarPagamento() {
