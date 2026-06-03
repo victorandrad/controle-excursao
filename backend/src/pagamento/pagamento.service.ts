@@ -212,7 +212,7 @@ export class PagamentoService {
     });
     if (!pagamento) throw new NotFoundException('Pagamento não encontrado');
 
-    const inscricaoId = pagamento.parcela.inscricaoId;
+    const parcelaId = pagamento.parcelaId;
     const valorParcela =
       Number(pagamento.parcela.inscricao.excursao.valor) /
       pagamento.parcela.inscricao.excursao.numParcelas;
@@ -220,7 +220,18 @@ export class PagamentoService {
 
     await this.prisma.$transaction(async (tx) => {
       await tx.pagamento.delete({ where: { id } });
-      await this.redistribuirInscricao(tx, inscricaoId, valorParcela);
+
+      // Recalcula APENAS a parcela afetada. Não redistribui para outras parcelas
+      // (o botão "Reorganizar" continua disponível como ação manual opt-in).
+      const restantes = await tx.pagamento.findMany({
+        where: { parcelaId },
+      });
+      const soma = restantes.reduce((acc, p) => acc + Number(p.valorPago), 0);
+      await tx.parcela.update({
+        where: { id: parcelaId },
+        data: { status: soma + 0.005 >= valorParcela ? 'paga' : 'pendente' },
+      });
+
       if (arquivo) {
         const aindaUsado = await tx.pagamento.count({
           where: { comprovante: arquivo },
