@@ -1175,7 +1175,7 @@ export class PagamentosComponent implements OnInit, OnDestroy {
   cancelarPagamento(pag: Pagamento) {
     this.modal.confirm({
       nzTitle: 'Cancelar este pagamento?',
-      nzContent: 'O pagamento será removido e a parcela voltará ao estado anterior (pendente ou parcial). Esta ação não pode ser desfeita.',
+      nzContent: 'Se este pagamento foi parte de uma operação maior (R$X distribuídos em várias parcelas), todos os pagamentos da mesma operação serão removidos juntos. Esta ação não pode ser desfeita.',
       nzOkText: 'Cancelar pagamento',
       nzOkDanger: true,
       nzCancelText: 'Voltar',
@@ -1184,9 +1184,14 @@ export class PagamentosComponent implements OnInit, OnDestroy {
   }
 
   private executarCancelarPagamento(id: string) {
-    this.api.delete<unknown>(`pagamentos/${id}`).subscribe({
-      next: () => {
-        this.message.success('Pagamento cancelado.');
+    this.api.delete<{ ok: boolean; cancelados?: number }>(`pagamentos/${id}`).subscribe({
+      next: (res) => {
+        const n = res?.cancelados ?? 1;
+        this.message.success(
+          n > 1
+            ? `${n} pagamentos do mesmo lote foram cancelados.`
+            : 'Pagamento cancelado.',
+        );
         this.carregarInscricoes();
       },
       error: (err) => this.message.error(err?.error?.message ?? 'Erro ao cancelar pagamento'),

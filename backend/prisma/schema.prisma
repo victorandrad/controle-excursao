@@ -121,6 +121,7 @@ model Pagamento {
   metodo        MetodoPagamento
   referencia    String?
   comprovante   String?
+  loteId        String?         @map("lote_id")
 
   parcela Parcela @relation(fields: [parcelaId], references: [id])
   usuario Usuario @relation(fields: [usuarioId], references: [id])

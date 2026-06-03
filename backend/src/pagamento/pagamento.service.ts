@@ -4,6 +4,7 @@ import {
   NotFoundException,
   StreamableFile,
 } from '@nestjs/common';
+import { randomUUID } from 'crypto';
 import { createReadStream, existsSync, unlinkSync } from 'fs';
 import { extname, join } from 'path';
 import { PrismaService } from '../prisma/prisma.service';
@@ -92,6 +93,8 @@ export class PagamentoService {
       );
 
       return await this.prisma.$transaction(async (tx) => {
+        // Lote único pra toda a operação — permite cancelar tudo junto depois.
+        const loteId = randomUUID();
         const criados = [];
         for (const item of plano) {
           const pg = await tx.pagamento.create({
@@ -104,6 +107,7 @@ export class PagamentoService {
               referencia: dto.referencia,
               // Mesmo comprovante referenciado em todos os pagamentos da operação.
               comprovante: comprovante?.filename ?? null,
+              loteId,
             },
           });
           criados.push(pg);
@@ -212,35 +216,62 @@ export class PagamentoService {
     });
     if (!pagamento) throw new NotFoundException('Pagamento não encontrado');
 
-    const parcelaId = pagamento.parcelaId;
+    const inscricaoId = pagamento.parcela.inscricaoId;
     const valorParcela =
       Number(pagamento.parcela.inscricao.excursao.valor) /
       pagamento.parcela.inscricao.excursao.numParcelas;
-    const arquivo = pagamento.comprovante;
+
+    // Pagamentos a cancelar: se houver loteId, todos do lote (mesma inscrição).
+    // Senão, apenas este.
+    const aCancelar = pagamento.loteId
+      ? await this.prisma.pagamento.findMany({
+          where: {
+            loteId: pagamento.loteId,
+            parcela: { inscricaoId },
+          },
+          select: { id: true, parcelaId: true, comprovante: true },
+        })
+      : [
+          {
+            id: pagamento.id,
+            parcelaId: pagamento.parcelaId,
+            comprovante: pagamento.comprovante,
+          },
+        ];
+
+    const ids = aCancelar.map((p) => p.id);
+    const parcelaIds = [...new Set(aCancelar.map((p) => p.parcelaId))];
+    const arquivos = [
+      ...new Set(
+        aCancelar.map((p) => p.comprovante).filter((c): c is string => !!c),
+      ),
+    ];
 
     await this.prisma.$transaction(async (tx) => {
-      await tx.pagamento.delete({ where: { id } });
+      await tx.pagamento.deleteMany({ where: { id: { in: ids } } });
 
-      // Recalcula APENAS a parcela afetada. Não redistribui para outras parcelas
-      // (o botão "Reorganizar" continua disponível como ação manual opt-in).
-      const restantes = await tx.pagamento.findMany({
-        where: { parcelaId },
-      });
-      const soma = restantes.reduce((acc, p) => acc + Number(p.valorPago), 0);
-      await tx.parcela.update({
-        where: { id: parcelaId },
-        data: { status: soma + 0.005 >= valorParcela ? 'paga' : 'pendente' },
-      });
-
-      if (arquivo) {
-        const aindaUsado = await tx.pagamento.count({
-          where: { comprovante: arquivo },
+      // Recompõe status de cada parcela afetada (sem redistribuir entre parcelas).
+      for (const pid of parcelaIds) {
+        const restantes = await tx.pagamento.findMany({
+          where: { parcelaId: pid },
         });
-        if (aindaUsado === 0) this.removerArquivo(arquivo);
+        const soma = restantes.reduce((acc, p) => acc + Number(p.valorPago), 0);
+        await tx.parcela.update({
+          where: { id: pid },
+          data: { status: soma + 0.005 >= valorParcela ? 'paga' : 'pendente' },
+        });
+      }
+
+      // Limpa arquivos de comprovante que não são mais referenciados.
+      for (const arq of arquivos) {
+        const aindaUsado = await tx.pagamento.count({
+          where: { comprovante: arq },
+        });
+        if (aindaUsado === 0) this.removerArquivo(arq);
       }
     });
 
-    return { ok: true };
+    return { ok: true, cancelados: ids.length };
   }
 
   /**
@@ -311,7 +342,7 @@ export class PagamentoService {
           });
           primeiroChunk = false;
         } else {
-          // Chunks subsequentes: cria novo registro herdando metadados.
+          // Chunks subsequentes: cria novo registro herdando metadados (loteId inclusive).
           await tx.pagamento.create({
             data: {
               parcelaId: parcelas[pIdx].id,
@@ -322,6 +353,7 @@ export class PagamentoService {
               metodo: pg.metodo,
               referencia: pg.referencia,
               comprovante: pg.comprovante,
+              loteId: pg.loteId,
             },
           });
         }
