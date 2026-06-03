@@ -236,9 +236,13 @@ interface FileiraAssentos {
       [nzTitle]="'Inscrições — ' + excursao.nome"
       [nzSubtitle]="(excursao.valor | brl) + ' · ' + excursao.numParcelas + 'x · ' + rotuloVeiculo + ' (' + excursao.totalAssentos + ' assentos)'">
       <nz-page-header-extra>
+        <button nz-button nzGhost
+                [nzLoading]="exportandoMapa" (click)="exportarMapa()">
+          <span nz-icon nzType="car"></span> Mapa em PDF
+        </button>
         <button nz-button nzType="primary" nzGhost
                 [nzLoading]="exportando" (click)="exportarPdf()">
-          <span nz-icon nzType="file-pdf"></span> Exportar PDF
+          <span nz-icon nzType="file-pdf"></span> Lista em PDF
         </button>
       </nz-page-header-extra>
     </nz-page-header>
@@ -473,6 +477,7 @@ export class InscricoesComponent implements OnInit {
   buscandoParticipante = false;
   inscrevendo = false;
   exportando = false;
+  exportandoMapa = false;
 
   private buscaSubject = new Subject<string>();
 
@@ -722,6 +727,20 @@ export class InscricoesComponent implements OnInit {
       error: () => {
         this.message.error('Erro ao gerar o PDF.');
         this.exportando = false;
+      },
+    });
+  }
+
+  exportarMapa() {
+    this.exportandoMapa = true;
+    this.api.get<Inscricao[]>('inscricoes', { excursaoId: this.excursao.id }).subscribe({
+      next: (inscricoes) => {
+        this.listaPdf.gerarMapaAssentos(this.excursao, inscricoes);
+        this.exportandoMapa = false;
+      },
+      error: () => {
+        this.message.error('Erro ao gerar o mapa.');
+        this.exportandoMapa = false;
       },
     });
   }

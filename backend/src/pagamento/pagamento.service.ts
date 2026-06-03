@@ -234,10 +234,11 @@ export class PagamentoService {
 
   /**
    * Redistribui automaticamente os pagamentos restantes da inscrição:
-   *  - Pega todos os pagamentos remanescentes em ordem de criação.
-   *  - Reatribui cada um à parcela mais antiga ainda não-cheia (preservando
-   *    o `valorPago` original; só o `parcelaId` muda).
-   *  - Recalcula `status` de todas as parcelas com base na nova soma.
+   *  - Percorre pagamentos em ordem de criação.
+   *  - Enche cada parcela em ordem; quando um pagamento não cabe inteiro na
+   *    parcela atual, divide em dois registros (mesma data/método/comprovante)
+   *    pra encher a parcela e empurrar o resto pra próxima.
+   *  - Recalcula `status` de todas as parcelas.
    */
   private async redistribuirInscricao(
     tx: Prisma.TransactionClient,
@@ -256,22 +257,48 @@ export class PagamentoService {
 
     let pIdx = 0;
     let acumulado = 0;
+
     for (const pg of remaining) {
-      const v = Number(pg.valorPago);
-      while (
-        acumulado + v > valorParcela + 0.005 &&
-        pIdx < parcelas.length - 1
-      ) {
-        pIdx++;
-        acumulado = 0;
+      let restanteDoPg = Number(pg.valorPago);
+      let primeiroChunk = true;
+
+      while (restanteDoPg > 0.005 && pIdx < parcelas.length) {
+        const capacidade = Math.max(0, valorParcela - acumulado);
+        if (capacidade < 0.005) {
+          pIdx++;
+          acumulado = 0;
+          continue;
+        }
+        const chunk = round2(Math.min(restanteDoPg, capacidade));
+
+        if (primeiroChunk) {
+          // Reaproveita o registro original (atualizando parcela + valor).
+          await tx.pagamento.update({
+            where: { id: pg.id },
+            data: {
+              parcelaId: parcelas[pIdx].id,
+              valorPago: new Decimal(chunk),
+            },
+          });
+          primeiroChunk = false;
+        } else {
+          // Chunks subsequentes: cria novo registro herdando metadados.
+          await tx.pagamento.create({
+            data: {
+              parcelaId: parcelas[pIdx].id,
+              usuarioId: pg.usuarioId,
+              valorPago: new Decimal(chunk),
+              dataPagamento: pg.dataPagamento,
+              criadoEm: pg.criadoEm,
+              metodo: pg.metodo,
+              referencia: pg.referencia,
+              comprovante: pg.comprovante,
+            },
+          });
+        }
+        acumulado = round2(acumulado + chunk);
+        restanteDoPg = round2(restanteDoPg - chunk);
       }
-      if (pg.parcelaId !== parcelas[pIdx].id) {
-        await tx.pagamento.update({
-          where: { id: pg.id },
-          data: { parcelaId: parcelas[pIdx].id },
-        });
-      }
-      acumulado += v;
     }
 
     // Recomputa status com base nas novas atribuições.

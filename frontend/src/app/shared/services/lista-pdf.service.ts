@@ -96,6 +96,159 @@ export class ListaPdfService {
   }
 
   /**
+   * Gera e baixa um PDF com o mapa de assentos do veículo, mostrando o nome
+   * do ocupante em cada assento.
+   */
+  gerarMapaAssentos(excursao: Excursao, inscricoes: Inscricao[]): void {
+    const doc = new jsPDF({ unit: 'pt', format: 'a4' });
+    const pageWidth = 595.28;
+    const pageHeight = 841.89;
+    const margin = 40;
+
+    // ── Cabeçalho ──
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(16);
+    doc.text('Mapa de Assentos', margin, 48);
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(11);
+    doc.text(excursao.nome, margin, 68);
+
+    const veiculo = excursao.tipoVeiculo === 'van' ? 'Van' : 'Ônibus';
+    doc.setFontSize(9);
+    doc.setTextColor(130);
+    doc.text(
+      `${excursao.destino}   ·   Ida: ${this.formatarData(excursao.dataIda)}` +
+        `   ·   ${veiculo} (${excursao.totalAssentos} assentos)`,
+      margin,
+      84,
+    );
+    doc.setTextColor(0);
+
+    // Layout do veículo
+    const porFileira = excursao.tipoVeiculo === 'van' ? 3 : 4;
+    const esqCount = excursao.tipoVeiculo === 'van' ? 1 : 2;
+    const dirCount = porFileira - esqCount;
+
+    // Monta fileiras (mesma lógica do frontend)
+    const fileiras: { esquerda: number[]; direita: number[] }[] = [];
+    let n = 1;
+    while (n <= excursao.totalAssentos) {
+      const f = { esquerda: [] as number[], direita: [] as number[] };
+      for (let i = 0; i < porFileira && n <= excursao.totalAssentos; i++) {
+        if (i < esqCount) f.esquerda.push(n);
+        else f.direita.push(n);
+        n++;
+      }
+      fileiras.push(f);
+    }
+
+    // Mapa assento → nome do ocupante
+    const ocupados = new Map<number, string>();
+    for (const i of inscricoes.filter((x) => x.status !== 'cancelada')) {
+      if (i.numeroAssento != null) {
+        ocupados.set(i.numeroAssento, i.participante?.nome ?? '');
+      }
+    }
+
+    // Dimensões do desenho
+    const seatW = 60;
+    const seatH = 32;
+    const seatGap = 6;
+    const corredor = 24;
+    const rowGap = 6;
+    const groupW = (count: number) =>
+      count * seatW + Math.max(0, count - 1) * seatGap;
+    const linhaW = groupW(esqCount) + corredor + groupW(dirCount);
+    const xStart = (pageWidth - linhaW) / 2;
+
+    // Indicador "FRENTE"
+    const yMapaStart = 108;
+    doc.setFontSize(8);
+    doc.setTextColor(150);
+    doc.text('FRENTE', pageWidth / 2, yMapaStart - 2, { align: 'center' });
+    doc.setTextColor(0);
+
+    // Desenhar fileiras
+    let y = yMapaStart + 4;
+    for (const f of fileiras) {
+      // Quebra de página se a fileira não couber
+      if (y + seatH > pageHeight - 70) {
+        doc.addPage();
+        y = 50;
+      }
+      let x = xStart;
+      for (const num of f.esquerda) {
+        this.desenharAssento(doc, x, y, seatW, seatH, num, ocupados.get(num) ?? null);
+        x += seatW + seatGap;
+      }
+      x += corredor - seatGap; // ajusta corredor (loop deixou +seatGap a mais)
+      for (const num of f.direita) {
+        this.desenharAssento(doc, x, y, seatW, seatH, num, ocupados.get(num) ?? null);
+        x += seatW + seatGap;
+      }
+      y += seatH + rowGap;
+    }
+
+    // Rodapé
+    const preenchidos = ocupados.size;
+    doc.setFontSize(9);
+    doc.setTextColor(130);
+    const yRodape = Math.min(y + 16, pageHeight - 40);
+    doc.text(
+      `Ocupados: ${preenchidos} / ${excursao.totalAssentos}` +
+        `   ·   Gerado em ${this.formatarDataHora(new Date())}`,
+      margin,
+      yRodape,
+    );
+    doc.setTextColor(0);
+
+    doc.save(`mapa-${this.slug(excursao.nome)}.pdf`);
+  }
+
+  /** Desenha um assento (caixa) com número e nome do ocupante (se houver). */
+  private desenharAssento(
+    doc: jsPDF,
+    x: number,
+    y: number,
+    w: number,
+    h: number,
+    num: number,
+    nome: string | null,
+  ) {
+    if (nome) {
+      doc.setFillColor(230, 247, 255);
+      doc.setDrawColor(24, 144, 255);
+    } else {
+      doc.setFillColor(250, 250, 250);
+      doc.setDrawColor(210);
+    }
+    doc.setLineWidth(0.5);
+    doc.rect(x, y, w, h, 'FD');
+
+    // Número (canto sup. esquerdo)
+    doc.setFontSize(7);
+    doc.setTextColor(nome ? 80 : 160);
+    doc.text(String(num), x + 4, y + 9);
+
+    if (nome) {
+      doc.setFontSize(7.5);
+      doc.setTextColor(0);
+      const lines = (doc.splitTextToSize(nome, w - 6) as string[]).slice(0, 2);
+      const lineH = 9;
+      const totalH = lines.length * lineH;
+      const startY = y + (h - totalH) / 2 + lineH * 0.75;
+      for (let i = 0; i < lines.length; i++) {
+        doc.text(lines[i], x + w / 2, startY + i * lineH, { align: 'center' });
+      }
+    }
+
+    doc.setTextColor(0);
+    doc.setDrawColor(0);
+    doc.setFillColor(255, 255, 255);
+  }
+
+  /**
    * Gera e baixa um PDF com a lista de participantes (cadastros),
    * respeitando um filtro opcional (todos / sem telefone / sem RG / sem ambos).
    */
