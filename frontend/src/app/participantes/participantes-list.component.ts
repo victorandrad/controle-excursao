@@ -571,8 +571,11 @@ export class ParticipantesListComponent implements OnInit, OnDestroy {
     this.salvando = true;
 
     if (this.editando) {
-      const body: ParticipanteBody = { nome: v.nome ?? '' };
-      if (v.cpf) body.cpf = v.cpf;
+      // Em edição: cpf SEMPRE no body (null limpa, string atualiza).
+      const body: ParticipanteBody = {
+        nome: v.nome ?? '',
+        cpf: v.cpf ? v.cpf : null,
+      };
       if (v.rg !== null) body.rg = v.rg;
       if (v.telefone !== null) body.telefone = v.telefone;
       this.api.patch<Participante>(`participantes/${this.editando.id}`, body).subscribe({

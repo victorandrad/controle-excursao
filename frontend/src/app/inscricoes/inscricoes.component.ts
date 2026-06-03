@@ -14,6 +14,7 @@ import { NzDividerModule } from 'ng-zorro-antd/divider';
 import { NzSpinModule } from 'ng-zorro-antd/spin';
 import { NzTagModule } from 'ng-zorro-antd/tag';
 import { NzMessageService } from 'ng-zorro-antd/message';
+import { NzModalModule, NzModalService } from 'ng-zorro-antd/modal';
 import { NzToolTipModule } from 'ng-zorro-antd/tooltip';
 import { ApiService } from '../shared/services/api.service';
 import { ExcursaoAtivaService } from '../shared/services/excursao-ativa.service';
@@ -43,6 +44,7 @@ interface FileiraAssentos {
     NzDividerModule,
     NzSpinModule,
     NzTagModule,
+    NzModalModule,
     NzToolTipModule,
     BrlPipe,
   ],
@@ -142,8 +144,9 @@ interface FileiraAssentos {
     .assento.livre:hover { border-color: #1890ff; color: #1890ff; }
     .assento.ocupado {
       background: #f5f5f5; color: #bbb; border-color: #e8e8e8;
-      cursor: not-allowed;
+      cursor: pointer;
     }
+    .assento.ocupado:hover { border-color: #faad14; color: #faad14; }
     .assento.meu {
       background: #1890ff; color: #fff; border-color: #1890ff;
       box-shadow: 0 2px 8px rgba(24,144,255,0.4);
@@ -451,7 +454,8 @@ export class InscricoesComponent implements OnInit {
   get rotuloVeiculo(): string { return this.excursao.tipoVeiculo === 'van' ? 'Van' : 'Ônibus'; }
 
   fileiras: FileiraAssentos[] = [];
-  ocupados = new Map<number, string>(); // assento -> nome do dono
+  /** assento → inscrição que o ocupa (id + nome do participante). */
+  ocupados = new Map<number, { id: string; nome: string }>();
 
   participantes: Participante[] = [];
   participanteId: string | null = null;
@@ -472,6 +476,7 @@ export class InscricoesComponent implements OnInit {
   constructor(
     private api: ApiService,
     private message: NzMessageService,
+    private modal: NzModalService,
   ) {}
 
   ngOnInit() {
@@ -517,7 +522,10 @@ export class InscricoesComponent implements OnInit {
         this.ocupados.clear();
         inscricoes.forEach(i => {
           if (i.numeroAssento != null) {
-            this.ocupados.set(i.numeroAssento, i.participante?.nome ?? 'Ocupado');
+            this.ocupados.set(i.numeroAssento, {
+              id: i.id,
+              nome: i.participante?.nome ?? 'Ocupado',
+            });
           }
         });
         this.carregando = false;
@@ -612,13 +620,18 @@ export class InscricoesComponent implements OnInit {
   // ── Assentos ──
   podeClicarAssento(n: number): boolean {
     if (!this.inscricaoSelecionadaId) return false;
-    if (n === this.assentoDaInscricao) return true; // permite limpar o próprio
-    return !this.ocupados.has(n);                    // só livres
+    // Tudo clicável quando há inscrição selecionada:
+    // - próprio → libera   - livre → atribui   - de outro → abre confirmação de troca
+    if (n === this.assentoDaInscricao) return true;
+    const ocupante = this.ocupados.get(n);
+    if (ocupante) return ocupante.id !== this.inscricaoSelecionadaId;
+    return true;
   }
 
   tooltipAssento(n: number): string | null {
     if (n === this.assentoDaInscricao) return 'Assento atual — clique para liberar';
-    if (this.ocupados.has(n)) return this.ocupados.get(n) ?? 'Ocupado';
+    const ocupante = this.ocupados.get(n);
+    if (ocupante) return `${ocupante.nome} — clique para trocar`;
     return null;
   }
 
@@ -628,19 +641,64 @@ export class InscricoesComponent implements OnInit {
       return;
     }
     const limpar = n === this.assentoDaInscricao;
-    const novoAssento = limpar ? null : n;
-    if (!limpar && this.ocupados.has(n)) return;
+    if (limpar) {
+      this.atribuirAssento(null);
+      return;
+    }
+    const ocupante = this.ocupados.get(n);
+    if (ocupante && ocupante.id !== this.inscricaoSelecionadaId) {
+      this.confirmarTroca(ocupante, n);
+      return;
+    }
+    this.atribuirAssento(n);
+  }
 
-    this.api.patch<Inscricao>(`inscricoes/${this.inscricaoSelecionadaId}/assento`, {
-      numeroAssento: novoAssento,
-    }).subscribe({
+  private atribuirAssento(numeroAssento: number | null) {
+    this.api.patch<Inscricao>(
+      `inscricoes/${this.inscricaoSelecionadaId}/assento`,
+      { numeroAssento },
+    ).subscribe({
       next: () => {
-        this.message.success(limpar ? 'Assento liberado.' : `Assento ${n} atribuído.`);
+        this.message.success(
+          numeroAssento === null
+            ? 'Assento liberado.'
+            : `Assento ${numeroAssento} atribuído.`,
+        );
         this.carregarInscricoesParticipante();
         this.carregarMapa();
       },
       error: (err) => {
         this.message.error(err?.error?.message ?? 'Erro ao atribuir assento');
+      },
+    });
+  }
+
+  private confirmarTroca(ocupante: { id: string; nome: string }, n: number) {
+    const meu = this.assentoDaInscricao;
+    const detalhe = meu != null
+      ? `Você ficará com o assento ${n} e ${ocupante.nome} ficará com o assento ${meu}.`
+      : `Você ficará com o assento ${n} e ${ocupante.nome} ficará sem assento.`;
+    this.modal.confirm({
+      nzTitle: `Trocar de lugar com ${ocupante.nome}?`,
+      nzContent: detalhe,
+      nzOkText: 'Trocar',
+      nzCancelText: 'Cancelar',
+      nzOnOk: () => this.executarTroca(ocupante.id),
+    });
+  }
+
+  private executarTroca(outraInscricaoId: string) {
+    this.api.post<Inscricao>('inscricoes/trocar-assentos', {
+      inscricaoAId: this.inscricaoSelecionadaId,
+      inscricaoBId: outraInscricaoId,
+    }).subscribe({
+      next: () => {
+        this.message.success('Lugares trocados.');
+        this.carregarInscricoesParticipante();
+        this.carregarMapa();
+      },
+      error: (err) => {
+        this.message.error(err?.error?.message ?? 'Erro ao trocar lugares');
       },
     });
   }

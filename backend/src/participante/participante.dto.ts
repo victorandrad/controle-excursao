@@ -11,7 +11,16 @@ export const CriarParticipanteSchema = z.object({
   telefone: z.string().optional(),
 });
 
-export const AtualizarParticipanteSchema = CriarParticipanteSchema.partial();
+export const AtualizarParticipanteSchema =
+  CriarParticipanteSchema.partial().extend({
+    // No update, cpf aceita null para permitir limpar.
+    cpf: z
+      .string()
+      .transform((v) => v.replace(/\D/g, ''))
+      .pipe(z.string().regex(/^\d{11}$/))
+      .nullable()
+      .optional(),
+  });
 
 export type CriarParticipanteDto = z.infer<typeof CriarParticipanteSchema>;
 export type AtualizarParticipanteDto = z.infer<

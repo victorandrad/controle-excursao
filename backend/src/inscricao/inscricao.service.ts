@@ -91,6 +91,36 @@ export class InscricaoService {
     );
   }
 
+  async trocarAssentos(inscricaoAId: string, inscricaoBId: string) {
+    if (inscricaoAId === inscricaoBId) {
+      throw new BadRequestException('Inscrições iguais');
+    }
+    return this.prisma.$transaction(async (tx) => {
+      const a = await tx.inscricao.findUnique({ where: { id: inscricaoAId } });
+      const b = await tx.inscricao.findUnique({ where: { id: inscricaoBId } });
+      if (!a || !b) throw new NotFoundException('Inscrição não encontrada');
+      if (a.excursaoId !== b.excursaoId) {
+        throw new BadRequestException('Inscrições de excursões diferentes');
+      }
+      const aOld = a.numeroAssento;
+      const bOld = b.numeroAssento;
+      // Sequência que evita violar o unique [excursaoId, numeroAssento]:
+      // 1) limpa A   2) B recebe assento antigo de A   3) A recebe assento antigo de B
+      await tx.inscricao.update({
+        where: { id: inscricaoAId },
+        data: { numeroAssento: null },
+      });
+      await tx.inscricao.update({
+        where: { id: inscricaoBId },
+        data: { numeroAssento: aOld },
+      });
+      return tx.inscricao.update({
+        where: { id: inscricaoAId },
+        data: { numeroAssento: bOld },
+      });
+    });
+  }
+
   async atribuirAssento(inscricaoId: string, numeroAssento: number | null) {
     const inscricao = await this.prisma.inscricao.findUnique({
       where: { id: inscricaoId },

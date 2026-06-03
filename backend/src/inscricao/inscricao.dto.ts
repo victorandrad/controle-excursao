@@ -13,3 +13,10 @@ export const AtribuirAssentoSchema = z.object({
 });
 
 export type AtribuirAssentoDto = z.infer<typeof AtribuirAssentoSchema>;
+
+export const TrocarAssentosSchema = z.object({
+  inscricaoAId: z.string().uuid(),
+  inscricaoBId: z.string().uuid(),
+});
+
+export type TrocarAssentosDto = z.infer<typeof TrocarAssentosSchema>;

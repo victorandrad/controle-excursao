@@ -11,8 +11,16 @@ import {
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { ZodValidationPipe } from '../shared/zod-validation.pipe';
 import { InscricaoService } from './inscricao.service';
-import { AtribuirAssentoSchema, InscreverSchema } from './inscricao.dto';
-import type { AtribuirAssentoDto, InscreverDto } from './inscricao.dto';
+import {
+  AtribuirAssentoSchema,
+  InscreverSchema,
+  TrocarAssentosSchema,
+} from './inscricao.dto';
+import type {
+  AtribuirAssentoDto,
+  InscreverDto,
+  TrocarAssentosDto,
+} from './inscricao.dto';
 
 @Controller('inscricoes')
 @UseGuards(JwtAuthGuard)
@@ -48,5 +56,12 @@ export class InscricaoController {
     @Body(new ZodValidationPipe(AtribuirAssentoSchema)) dto: AtribuirAssentoDto,
   ) {
     return this.service.atribuirAssento(id, dto.numeroAssento);
+  }
+
+  @Post('trocar-assentos')
+  trocarAssentos(
+    @Body(new ZodValidationPipe(TrocarAssentosSchema)) dto: TrocarAssentosDto,
+  ) {
+    return this.service.trocarAssentos(dto.inscricaoAId, dto.inscricaoBId);
   }
 }
