@@ -3,7 +3,6 @@ import { z } from 'zod';
 export const InscreverSchema = z.object({
   excursaoId: z.string().uuid(),
   participanteId: z.string().uuid(),
-  quantidade: z.number().int().positive().max(50).default(1),
 });
 
 export type InscreverDto = z.infer<typeof InscreverSchema>;

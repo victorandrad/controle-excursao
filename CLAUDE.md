@@ -104,8 +104,9 @@ A versão canônica é `backend/prisma/schema.prisma`.
    o backend valida (PATCH não aceita esses campos).
 4. **Inscrições e parcelas NÃO são pré-criadas.** Geração lazy: ao inscrever,
    uma transação cria 1 Inscrição + N Parcelas atomicamente.
-5. **Inscrição em lote.** Pode-se criar várias inscrições numa operação
-   (`quantidade`). Tudo numa transação — ou cria todas, ou nenhuma.
+5. **Uma inscrição (ativa) por participante por excursão.** O endpoint
+   `inscrever` rejeita se já existe uma inscrição ativa do participante na
+   excursão. Inscrições com `status='cancelada'` não bloqueiam reinscrição.
 6. **`totalAssentos` é o teto de inscrições.** Não dá pra inscrever além disso,
    nem reduzir abaixo do nº de inscrições existentes.
 7. **`tipoVeiculo` define o layout do mapa de assentos** (frontend): ônibus =

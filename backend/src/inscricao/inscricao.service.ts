@@ -62,33 +62,40 @@ export class InscricaoService {
     if (excursao.status !== 'aberta')
       throw new BadRequestException('Excursão não está aberta');
 
-    const total = await this.prisma.inscricao.count({
-      where: { excursaoId: dto.excursaoId },
+    // Regra: 1 inscrição (ativa) por participante por excursão.
+    const jaInscrito = await this.prisma.inscricao.findFirst({
+      where: {
+        excursaoId: dto.excursaoId,
+        participanteId: dto.participanteId,
+        status: 'ativa',
+      },
     });
-    if (total + dto.quantidade > excursao.totalAssentos) {
-      const restantes = excursao.totalAssentos - total;
+    if (jaInscrito) {
       throw new BadRequestException(
-        `Sem vagas suficientes: ${restantes} disponível(is)`,
+        'Participante já está inscrito nesta excursão',
       );
     }
 
-    return this.prisma.$transaction(
-      Array.from({ length: dto.quantidade }, () =>
-        this.prisma.inscricao.create({
-          data: {
-            excursaoId: dto.excursaoId,
-            participanteId: dto.participanteId,
-            parcelas: {
-              create: Array.from({ length: excursao.numParcelas }, (_, i) => ({
-                numero: i + 1,
-                status: 'pendente' as const,
-              })),
-            },
-          },
-          include: { parcelas: true },
-        }),
-      ),
-    );
+    const total = await this.prisma.inscricao.count({
+      where: { excursaoId: dto.excursaoId },
+    });
+    if (total >= excursao.totalAssentos) {
+      throw new BadRequestException('Sem vagas disponíveis');
+    }
+
+    return this.prisma.inscricao.create({
+      data: {
+        excursaoId: dto.excursaoId,
+        participanteId: dto.participanteId,
+        parcelas: {
+          create: Array.from({ length: excursao.numParcelas }, (_, i) => ({
+            numero: i + 1,
+            status: 'pendente' as const,
+          })),
+        },
+      },
+      include: { parcelas: true },
+    });
   }
 
   async trocarAssentos(inscricaoAId: string, inscricaoBId: string) {

@@ -9,7 +9,6 @@ import { NzIconModule } from 'ng-zorro-antd/icon';
 import { NzCardModule } from 'ng-zorro-antd/card';
 import { NzButtonModule } from 'ng-zorro-antd/button';
 import { NzInputModule } from 'ng-zorro-antd/input';
-import { NzInputNumberModule } from 'ng-zorro-antd/input-number';
 import { NzDividerModule } from 'ng-zorro-antd/divider';
 import { NzSpinModule } from 'ng-zorro-antd/spin';
 import { NzTagModule } from 'ng-zorro-antd/tag';
@@ -40,7 +39,6 @@ interface FileiraAssentos {
     NzCardModule,
     NzButtonModule,
     NzInputModule,
-    NzInputNumberModule,
     NzDividerModule,
     NzSpinModule,
     NzTagModule,
@@ -335,24 +333,25 @@ interface FileiraAssentos {
               <p>{{ participanteSelecionado?.telefone || participanteSelecionado?.cpf || 'Sem contato' }}</p>
             </div>
             <div class="perfil-actions">
-              <nz-input-number [(ngModel)]="quantidadeInscrever"
-                [nzMin]="1" [nzMax]="200" [nzStep]="1" [nzPrecision]="0"
-                nzSize="small" style="width:64px; margin-right:6px" />
               <button nz-button nzType="primary" nzSize="small"
-                      [nzLoading]="inscrevendo" (click)="inscrever()">
-                <span nz-icon nzType="plus"></span> Inscrever
+                      [nzLoading]="inscrevendo"
+                      [disabled]="jaInscrito"
+                      [nz-tooltip]="jaInscrito ? 'Já inscrito nesta excursão' : null"
+                      (click)="inscrever()">
+                <span nz-icon nzType="plus"></span>
+                {{ jaInscrito ? 'Já inscrito' : 'Inscrever' }}
               </button>
             </div>
           </div>
 
           <!-- Botão inscrever (mobile) -->
-          <div style="display:flex; gap:8px; align-items:center;" class="part-list-mobile">
-            <nz-input-number [(ngModel)]="quantidadeInscrever"
-              [nzMin]="1" [nzMax]="200" [nzStep]="1" [nzPrecision]="0"
-              style="width:72px; flex-shrink:0" />
+          <div class="part-list-mobile">
             <button nz-button nzType="primary" nzBlock
-                    [nzLoading]="inscrevendo" (click)="inscrever()">
-              <span nz-icon nzType="plus"></span> Inscrever participante
+                    [nzLoading]="inscrevendo"
+                    [disabled]="jaInscrito"
+                    (click)="inscrever()">
+              <span nz-icon nzType="plus"></span>
+              {{ jaInscrito ? 'Já inscrito nesta excursão' : 'Inscrever participante' }}
             </button>
           </div>
 
@@ -464,7 +463,11 @@ export class InscricoesComponent implements OnInit {
 
   inscricoesParticipante: Inscricao[] = [];
   inscricaoSelecionadaId: string | null = null;
-  quantidadeInscrever = 1;
+
+  /** True se o participante selecionado já tem uma inscrição ativa nesta excursão. */
+  get jaInscrito(): boolean {
+    return this.inscricoesParticipante.some((i) => i.status !== 'cancelada');
+  }
 
   carregando = false;
   buscandoParticipante = false;
@@ -596,17 +599,15 @@ export class InscricoesComponent implements OnInit {
 
   // ── Inscrever ──
   inscrever() {
-    if (!this.participanteId) return;
+    if (!this.participanteId || this.jaInscrito) return;
     this.inscrevendo = true;
-    this.api.post<Inscricao[]>('inscricoes/inscrever', {
+    this.api.post<Inscricao>('inscricoes/inscrever', {
       excursaoId: this.excursao.id,
       participanteId: this.participanteId,
-      quantidade: this.quantidadeInscrever,
     }).subscribe({
       next: () => {
-        this.message.success(`${this.quantidadeInscrever} inscrição(ões) criada(s)!`);
+        this.message.success('Inscrição criada!');
         this.inscrevendo = false;
-        this.quantidadeInscrever = 1;
         this.carregarInscricoesParticipante();
         this.carregarMapa();
       },
