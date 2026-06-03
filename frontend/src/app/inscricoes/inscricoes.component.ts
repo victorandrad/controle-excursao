@@ -236,11 +236,11 @@ interface FileiraAssentos {
       [nzTitle]="'Inscrições — ' + excursao.nome"
       [nzSubtitle]="(excursao.valor | brl) + ' · ' + excursao.numParcelas + 'x · ' + rotuloVeiculo + ' (' + excursao.totalAssentos + ' assentos)'">
       <nz-page-header-extra>
-        <button nz-button nzGhost
+        <button nz-button
                 [nzLoading]="exportandoMapa" (click)="exportarMapa()">
           <span nz-icon nzType="car"></span> Mapa em PDF
         </button>
-        <button nz-button nzType="primary" nzGhost
+        <button nz-button nzType="primary"
                 [nzLoading]="exportando" (click)="exportarPdf()">
           <span nz-icon nzType="file-pdf"></span> Lista em PDF
         </button>

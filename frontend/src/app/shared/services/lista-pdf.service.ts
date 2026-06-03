@@ -151,9 +151,9 @@ export class ListaPdfService {
       }
     }
 
-    // Dimensões do desenho
-    const seatW = 60;
-    const seatH = 32;
+    // Dimensões do desenho — quadrado maior pra acomodar nomes inteiros.
+    const seatW = 68;
+    const seatH = 44;
     const seatGap = 6;
     const corredor = 24;
     const rowGap = 6;
@@ -232,10 +232,11 @@ export class ListaPdfService {
     doc.text(String(num), x + 4, y + 9);
 
     if (nome) {
-      doc.setFontSize(7.5);
+      doc.setFontSize(7);
       doc.setTextColor(0);
-      const lines = (doc.splitTextToSize(nome, w - 6) as string[]).slice(0, 2);
-      const lineH = 9;
+      // Quebra o nome em quantas linhas couberem na largura; sem truncar.
+      const lines = (doc.splitTextToSize(nome, w - 6) as string[]).slice(0, 5);
+      const lineH = 8;
       const totalH = lines.length * lineH;
       const startY = y + (h - totalH) / 2 + lineH * 0.75;
       for (let i = 0; i < lines.length; i++) {

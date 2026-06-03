@@ -61,7 +61,9 @@
             "allowedCommonJsDependencies": [
               "canvg",
               "html2canvas",
-              "core-js"
+              "core-js",
+              "raf",
+              "rgbcolor"
             ]
           },
           "configurations": {
