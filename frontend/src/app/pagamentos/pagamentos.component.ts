@@ -10,7 +10,7 @@ import { NzInputNumberModule } from 'ng-zorro-antd/input-number';
 import { NzCardModule } from 'ng-zorro-antd/card';
 import { NzTagModule } from 'ng-zorro-antd/tag';
 import { NzButtonModule } from 'ng-zorro-antd/button';
-import { NzModalModule } from 'ng-zorro-antd/modal';
+import { NzModalModule, NzModalService } from 'ng-zorro-antd/modal';
 import { NzFormModule } from 'ng-zorro-antd/form';
 import { NzRadioModule } from 'ng-zorro-antd/radio';
 import { NzDatePickerModule } from 'ng-zorro-antd/date-picker';
@@ -603,6 +603,18 @@ function localDateStr(d: Date): string {
                               (click)="verComprovante(p.pagamentos?.[0])">
                         <span nz-icon nzType="paper-clip"></span> comprovante
                       </button>
+                      <button nz-button nzType="link" nzSize="small"
+                              style="padding:0 4px;height:auto"
+                              nz-tooltip nzTooltipTitle="Editar pagamento"
+                              (click)="abrirEdicaoPagamento(p.pagamentos![0], p)">
+                        <span nz-icon nzType="edit"></span>
+                      </button>
+                      <button nz-button nzType="link" nzSize="small" nzDanger
+                              style="padding:0 4px;height:auto"
+                              nz-tooltip nzTooltipTitle="Cancelar pagamento"
+                              (click)="cancelarPagamento(p.pagamentos![0])">
+                        <span nz-icon nzType="delete"></span>
+                      </button>
                     </div>
                     <div class="parcela-detalhe" *ngIf="p.status === 'pendente'">
                       <ng-container *ngIf="pagoNaParcela(p) > 0; else aguardando">
@@ -819,12 +831,16 @@ function localDateStr(d: Date): string {
 export class PagamentosComponent implements OnInit, OnDestroy {
   excursaoAtiva = inject(ExcursaoAtivaService);
   private sanitizer = inject(DomSanitizer);
+  private modal = inject(NzModalService);
 
   // Visualização de comprovante (modal inline)
   comprovanteModalVisivel = false;
   comprovanteUrlSafe: SafeResourceUrl | null = null;
   comprovanteUrlRaw: string | null = null;
   comprovanteTipo: 'pdf' | 'image' | null = null;
+
+  // Edição de pagamento existente (vs. registrar novo)
+  pagamentoEditando: Pagamento | null = null;
 
   participantes: Participante[] = [];
   participanteId: string | null = null;
@@ -967,6 +983,7 @@ export class PagamentosComponent implements OnInit, OnDestroy {
 
   /** Preview de como o valor digitado será distribuído entre as parcelas pendentes. */
   get previewDistribuicao(): { cobre: number; parcial: { numero: number; valor: number } | null; sobra: number } | null {
+    if (this.pagamentoEditando) return null; // edição não distribui
     const insc = this.inscricaoSelecionada;
     if (!this.parcelaSelecionada || !insc) return null;
     const valor = Number(this.form.value.valorPago) || 0;
@@ -1011,6 +1028,9 @@ export class PagamentosComponent implements OnInit, OnDestroy {
   }
 
   get modalTitulo(): string {
+    if (this.pagamentoEditando) {
+      return `Editar pagamento — Parcela ${this.pad(this.parcelaSelecionada?.numero ?? 0)}`;
+    }
     if (!this.parcelaSelecionada || !this.inscricaoSelecionada) return 'Registrar Pagamento';
     return `Parcela ${this.pad(this.parcelaSelecionada.numero)} — ${this.rotuloAssento(this.inscricaoSelecionada)}`;
   }
@@ -1021,6 +1041,7 @@ export class PagamentosComponent implements OnInit, OnDestroy {
 
   abrirPagamento(parcela: Parcela) {
     this.parcelaSelecionada = parcela;
+    this.pagamentoEditando = null;
     this.avisoRetroativo = false;
     this.comprovanteFile = null;
     this.comprovanteErro = '';
@@ -1040,6 +1061,7 @@ export class PagamentosComponent implements OnInit, OnDestroy {
   fecharModal() {
     this.modalVisivel = false;
     this.parcelaSelecionada = null;
+    this.pagamentoEditando = null;
   }
 
   verificarRetroativo(data: Date | null) {
@@ -1113,19 +1135,61 @@ export class PagamentosComponent implements OnInit, OnDestroy {
     if (this.comprovanteUrlRaw) URL.revokeObjectURL(this.comprovanteUrlRaw);
   }
 
+  abrirEdicaoPagamento(pag: Pagamento, parcela: Parcela) {
+    this.pagamentoEditando = pag;
+    this.parcelaSelecionada = parcela;
+    this.avisoRetroativo = false;
+    this.comprovanteFile = null;
+    this.comprovanteErro = '';
+    const valor = Number(pag.valorPago);
+    this.valorPagoDisplay = valor.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    this.form.patchValue({
+      valorPago: valor,
+      dataPagamento: new Date(pag.dataPagamento.slice(0, 10) + 'T00:00:00'),
+      metodo: pag.metodo,
+      referencia: pag.referencia ?? '',
+    });
+    this.form.markAsPristine();
+    this.form.markAsUntouched();
+    this.modalVisivel = true;
+  }
+
+  cancelarPagamento(pag: Pagamento) {
+    this.modal.confirm({
+      nzTitle: 'Cancelar este pagamento?',
+      nzContent: 'O pagamento será removido e a parcela voltará ao estado anterior (pendente ou parcial). Esta ação não pode ser desfeita.',
+      nzOkText: 'Cancelar pagamento',
+      nzOkDanger: true,
+      nzCancelText: 'Voltar',
+      nzOnOk: () => this.executarCancelarPagamento(pag.id),
+    });
+  }
+
+  private executarCancelarPagamento(id: string) {
+    this.api.delete<unknown>(`pagamentos/${id}`).subscribe({
+      next: () => {
+        this.message.success('Pagamento cancelado.');
+        this.carregarInscricoes();
+      },
+      error: (err) => this.message.error(err?.error?.message ?? 'Erro ao cancelar pagamento'),
+    });
+  }
+
   confirmarPagamento() {
     if (this.form.invalid) {
       Object.values(this.form.controls).forEach(c => { c.markAsDirty(); c.updateValueAndValidity(); });
       return;
     }
     const v = this.form.value;
-    if (v.metodo === 'pix' && !this.comprovanteFile) {
+    const semPix = v.metodo === 'pix'
+      && !this.comprovanteFile
+      && !this.pagamentoEditando?.comprovante;
+    if (semPix) {
       this.comprovanteErro = 'Anexe o comprovante do Pix (imagem ou PDF).';
       return;
     }
     const data = v.dataPagamento as Date;
     const fd = new FormData();
-    fd.append('parcelaId', this.parcelaSelecionada!.id);
     fd.append('valorPago', String(Number(v.valorPago)));
     fd.append('dataPagamento', localDateStr(data));
     fd.append('metodo', v.metodo as string);
@@ -1133,6 +1197,23 @@ export class PagamentosComponent implements OnInit, OnDestroy {
     if (this.comprovanteFile) fd.append('comprovante', this.comprovanteFile);
 
     this.registrando = true;
+    if (this.pagamentoEditando) {
+      // Edição: PATCH (sem parcelaId; mantém a mesma parcela)
+      this.api.patch<Pagamento>(`pagamentos/${this.pagamentoEditando.id}`, fd).subscribe({
+        next: () => {
+          this.message.success('Pagamento atualizado.');
+          this.fecharModal();
+          this.carregarInscricoes();
+          this.registrando = false;
+        },
+        error: (err) => {
+          this.message.error(err?.error?.message ?? 'Erro ao atualizar pagamento');
+          this.registrando = false;
+        },
+      });
+      return;
+    }
+    fd.append('parcelaId', this.parcelaSelecionada!.id);
     this.api.upload<PagamentoResposta>('pagamentos', fd).subscribe({
       next: (res) => {
         const partes: string[] = [];

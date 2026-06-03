@@ -7,7 +7,7 @@ import {
 import { createReadStream, existsSync, unlinkSync } from 'fs';
 import { extname, join } from 'path';
 import { PrismaService } from '../prisma/prisma.service';
-import { RegistrarPagamentoDto } from './pagamento.dto';
+import { AtualizarPagamentoDto, RegistrarPagamentoDto } from './pagamento.dto';
 import { COMPROVANTES_DIR, mimeDoArquivo } from './comprovante.config';
 import { Decimal } from '@prisma/client/runtime/library';
 
@@ -126,6 +126,111 @@ export class PagamentoService {
       if (comprovante) this.removerArquivo(comprovante.filename);
       throw err;
     }
+  }
+
+  async atualizar(
+    id: string,
+    dto: AtualizarPagamentoDto,
+    novoComprovante?: Express.Multer.File,
+  ) {
+    try {
+      const pagamento = await this.prisma.pagamento.findUnique({
+        where: { id },
+        include: {
+          parcela: {
+            include: { inscricao: { include: { excursao: true } } },
+          },
+        },
+      });
+      if (!pagamento) throw new NotFoundException('Pagamento não encontrado');
+
+      const temComprovante = novoComprovante || pagamento.comprovante;
+      if (dto.metodo === 'pix' && !temComprovante) {
+        throw new BadRequestException(
+          'Comprovante obrigatório para pagamento Pix',
+        );
+      }
+
+      const valorParcela =
+        Number(pagamento.parcela.inscricao.excursao.valor) /
+        pagamento.parcela.inscricao.excursao.numParcelas;
+      const comprovanteAntigo = pagamento.comprovante;
+      const comprovanteNovo = novoComprovante?.filename;
+
+      const atualizado = await this.prisma.$transaction(async (tx) => {
+        const upd = await tx.pagamento.update({
+          where: { id },
+          data: {
+            valorPago: new Decimal(dto.valorPago),
+            dataPagamento: new Date(dto.dataPagamento),
+            metodo: dto.metodo,
+            referencia: dto.referencia ?? null,
+            ...(comprovanteNovo ? { comprovante: comprovanteNovo } : {}),
+          },
+        });
+
+        // Recomputa status da parcela com base na soma dos pagamentos.
+        const pgs = await tx.pagamento.findMany({
+          where: { parcelaId: pagamento.parcelaId },
+        });
+        const soma = pgs.reduce((acc, p) => acc + Number(p.valorPago), 0);
+        await tx.parcela.update({
+          where: { id: pagamento.parcelaId },
+          data: { status: soma + 0.005 >= valorParcela ? 'paga' : 'pendente' },
+        });
+
+        // Se substituímos o comprovante e o antigo não é mais usado, apaga.
+        if (comprovanteNovo && comprovanteAntigo && comprovanteAntigo !== comprovanteNovo) {
+          const aindaUsado = await tx.pagamento.count({
+            where: { comprovante: comprovanteAntigo },
+          });
+          if (aindaUsado === 0) this.removerArquivo(comprovanteAntigo);
+        }
+        return upd;
+      });
+
+      return atualizado;
+    } catch (err) {
+      if (novoComprovante) this.removerArquivo(novoComprovante.filename);
+      throw err;
+    }
+  }
+
+  async cancelar(id: string) {
+    const pagamento = await this.prisma.pagamento.findUnique({
+      where: { id },
+      include: {
+        parcela: {
+          include: { inscricao: { include: { excursao: true } } },
+        },
+      },
+    });
+    if (!pagamento) throw new NotFoundException('Pagamento não encontrado');
+
+    const valorParcela =
+      Number(pagamento.parcela.inscricao.excursao.valor) /
+      pagamento.parcela.inscricao.excursao.numParcelas;
+    const arquivo = pagamento.comprovante;
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.pagamento.delete({ where: { id } });
+      const restantes = await tx.pagamento.findMany({
+        where: { parcelaId: pagamento.parcelaId },
+      });
+      const soma = restantes.reduce((acc, p) => acc + Number(p.valorPago), 0);
+      await tx.parcela.update({
+        where: { id: pagamento.parcelaId },
+        data: { status: soma + 0.005 >= valorParcela ? 'paga' : 'pendente' },
+      });
+      if (arquivo) {
+        const aindaUsado = await tx.pagamento.count({
+          where: { comprovante: arquivo },
+        });
+        if (aindaUsado === 0) this.removerArquivo(arquivo);
+      }
+    });
+
+    return { ok: true };
   }
 
   async obterComprovante(id: string): Promise<StreamableFile> {

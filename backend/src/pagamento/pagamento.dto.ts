@@ -12,3 +12,14 @@ export const RegistrarPagamentoSchema = z.object({
 });
 
 export type RegistrarPagamentoDto = z.infer<typeof RegistrarPagamentoSchema>;
+
+// Edição de um pagamento existente. Não permite trocar a parcela (campo ausente).
+// Comprovante segue por multipart (opcional — mantém o anterior se não vier novo).
+export const AtualizarPagamentoSchema = z.object({
+  valorPago: z.coerce.number().positive(),
+  dataPagamento: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  metodo: z.enum(['dinheiro', 'pix']),
+  referencia: z.string().optional(),
+});
+
+export type AtualizarPagamentoDto = z.infer<typeof AtualizarPagamentoSchema>;
