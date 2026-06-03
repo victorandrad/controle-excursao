@@ -233,6 +233,24 @@ export class PagamentoService {
   }
 
   /**
+   * Dispara a redistribuição automática numa inscrição existente — útil pra
+   * "consertar" inscrições com pagamentos antigos mal-distribuídos.
+   */
+  async redistribuirManual(inscricaoId: string) {
+    const inscricao = await this.prisma.inscricao.findUnique({
+      where: { id: inscricaoId },
+      include: { excursao: true },
+    });
+    if (!inscricao) throw new NotFoundException('Inscrição não encontrada');
+    const valorParcela =
+      Number(inscricao.excursao.valor) / inscricao.excursao.numParcelas;
+    await this.prisma.$transaction(async (tx) => {
+      await this.redistribuirInscricao(tx, inscricaoId, valorParcela);
+    });
+    return { ok: true };
+  }
+
+  /**
    * Redistribui automaticamente os pagamentos restantes da inscrição:
    *  - Percorre pagamentos em ordem de criação.
    *  - Enche cada parcela em ordem; quando um pagamento não cabe inteiro na

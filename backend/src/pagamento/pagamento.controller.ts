@@ -68,4 +68,9 @@ export class PagamentoController {
   cancelar(@Param('id') id: string) {
     return this.service.cancelar(id);
   }
+
+  @Post('inscricoes/:inscricaoId/redistribuir')
+  redistribuir(@Param('inscricaoId') inscricaoId: string) {
+    return this.service.redistribuirManual(inscricaoId);
+  }
 }

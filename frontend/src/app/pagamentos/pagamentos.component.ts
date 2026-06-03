@@ -568,6 +568,12 @@ function localDateStr(d: Date): string {
                 </span>
                 <span class="carne-header-sub">
                   Valor por parcela: <strong>{{ valorParcela | brl }}</strong>
+                  <button nz-button nzType="link" nzSize="small"
+                          style="margin-left:8px;padding:0 4px;height:auto"
+                          nz-tooltip nzTooltipTitle="Reorganiza parciais antigos: enche cada parcela em ordem, dividindo pagamentos quando necessário."
+                          (click)="reorganizarPagamentos()">
+                    <span nz-icon nzType="thunderbolt"></span> Reorganizar
+                  </button>
                 </span>
               </div>
 
@@ -1152,6 +1158,18 @@ export class PagamentosComponent implements OnInit, OnDestroy {
     this.form.markAsPristine();
     this.form.markAsUntouched();
     this.modalVisivel = true;
+  }
+
+  reorganizarPagamentos() {
+    if (!this.inscricaoSelecionada) return;
+    const inscId = this.inscricaoSelecionada.id;
+    this.api.post<{ ok: boolean }>(`pagamentos/inscricoes/${inscId}/redistribuir`, {}).subscribe({
+      next: () => {
+        this.message.success('Pagamentos reorganizados.');
+        this.carregarInscricoes();
+      },
+      error: (err) => this.message.error(err?.error?.message ?? 'Erro ao reorganizar'),
+    });
   }
 
   cancelarPagamento(pag: Pagamento) {
