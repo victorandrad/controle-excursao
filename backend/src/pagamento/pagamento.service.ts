@@ -9,6 +9,7 @@ import { extname, join } from 'path';
 import { PrismaService } from '../prisma/prisma.service';
 import { AtualizarPagamentoDto, RegistrarPagamentoDto } from './pagamento.dto';
 import { COMPROVANTES_DIR, mimeDoArquivo } from './comprovante.config';
+import { Prisma } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 
 function round2(n: number): number {
@@ -211,6 +212,7 @@ export class PagamentoService {
     });
     if (!pagamento) throw new NotFoundException('Pagamento não encontrado');
 
+    const inscricaoId = pagamento.parcela.inscricaoId;
     const valorParcela =
       Number(pagamento.parcela.inscricao.excursao.valor) /
       pagamento.parcela.inscricao.excursao.numParcelas;
@@ -218,14 +220,7 @@ export class PagamentoService {
 
     await this.prisma.$transaction(async (tx) => {
       await tx.pagamento.delete({ where: { id } });
-      const restantes = await tx.pagamento.findMany({
-        where: { parcelaId: pagamento.parcelaId },
-      });
-      const soma = restantes.reduce((acc, p) => acc + Number(p.valorPago), 0);
-      await tx.parcela.update({
-        where: { id: pagamento.parcelaId },
-        data: { status: soma + 0.005 >= valorParcela ? 'paga' : 'pendente' },
-      });
+      await this.redistribuirInscricao(tx, inscricaoId, valorParcela);
       if (arquivo) {
         const aindaUsado = await tx.pagamento.count({
           where: { comprovante: arquivo },
@@ -235,6 +230,64 @@ export class PagamentoService {
     });
 
     return { ok: true };
+  }
+
+  /**
+   * Redistribui automaticamente os pagamentos restantes da inscrição:
+   *  - Pega todos os pagamentos remanescentes em ordem de criação.
+   *  - Reatribui cada um à parcela mais antiga ainda não-cheia (preservando
+   *    o `valorPago` original; só o `parcelaId` muda).
+   *  - Recalcula `status` de todas as parcelas com base na nova soma.
+   */
+  private async redistribuirInscricao(
+    tx: Prisma.TransactionClient,
+    inscricaoId: string,
+    valorParcela: number,
+  ) {
+    const remaining = await tx.pagamento.findMany({
+      where: { parcela: { inscricaoId } },
+      orderBy: { criadoEm: 'asc' },
+    });
+    const parcelas = await tx.parcela.findMany({
+      where: { inscricaoId },
+      orderBy: { numero: 'asc' },
+    });
+    if (parcelas.length === 0) return;
+
+    let pIdx = 0;
+    let acumulado = 0;
+    for (const pg of remaining) {
+      const v = Number(pg.valorPago);
+      while (
+        acumulado + v > valorParcela + 0.005 &&
+        pIdx < parcelas.length - 1
+      ) {
+        pIdx++;
+        acumulado = 0;
+      }
+      if (pg.parcelaId !== parcelas[pIdx].id) {
+        await tx.pagamento.update({
+          where: { id: pg.id },
+          data: { parcelaId: parcelas[pIdx].id },
+        });
+      }
+      acumulado += v;
+    }
+
+    // Recomputa status com base nas novas atribuições.
+    for (const par of parcelas) {
+      const pgs = await tx.pagamento.findMany({
+        where: { parcelaId: par.id },
+      });
+      const soma = pgs.reduce((acc, p) => acc + Number(p.valorPago), 0);
+      const novoStatus = soma + 0.005 >= valorParcela ? 'paga' : 'pendente';
+      if (par.status !== novoStatus) {
+        await tx.parcela.update({
+          where: { id: par.id },
+          data: { status: novoStatus },
+        });
+      }
+    }
   }
 
   async obterComprovante(id: string): Promise<StreamableFile> {
