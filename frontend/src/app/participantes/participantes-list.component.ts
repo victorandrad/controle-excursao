@@ -15,8 +15,10 @@ import { NzEmptyModule } from 'ng-zorro-antd/empty';
 import { NzDividerModule } from 'ng-zorro-antd/divider';
 import { NzMessageService } from 'ng-zorro-antd/message';
 import { NzSwitchModule } from 'ng-zorro-antd/switch';
+import { NzSelectModule } from 'ng-zorro-antd/select';
 import { ApiService } from '../shared/services/api.service';
 import { ExcursaoAtivaService } from '../shared/services/excursao-ativa.service';
+import { ListaPdfService } from '../shared/services/lista-pdf.service';
 import { Inscricao, Parcela, Participante } from '../shared/models';
 
 @Component({
@@ -37,6 +39,7 @@ import { Inscricao, Parcela, Participante } from '../shared/models';
     NzEmptyModule,
     NzDividerModule,
     NzSwitchModule,
+    NzSelectModule,
   ],
   styles: [`
     /* ── page header ───────────────────────────────── */
@@ -158,9 +161,14 @@ import { Inscricao, Parcela, Participante } from '../shared/models';
         <h2>Participantes</h2>
         <p *ngIf="!carregando">{{ participantes.length }} cadastrado(s)</p>
       </div>
-      <button nz-button nzType="primary" (click)="abrirModal()">
-        <span nz-icon nzType="plus"></span> Novo
-      </button>
+      <div style="display:flex; gap:8px">
+        <button nz-button (click)="exportarPdf()" [disabled]="participantes.length === 0">
+          <span nz-icon nzType="file-pdf"></span> Exportar PDF
+        </button>
+        <button nz-button nzType="primary" (click)="abrirModal()">
+          <span nz-icon nzType="plus"></span> Novo
+        </button>
+      </div>
     </div>
 
     <!-- Barra de filtros -->
@@ -180,8 +188,17 @@ import { Inscricao, Parcela, Participante } from '../shared/models';
                 [style.color]="somenteQuitados ? '#fff' : '#52c41a'"></span>
           Quitados
         </button>
+        <nz-select [(ngModel)]="filtroIncompletos"
+                   [ngModelOptions]="{standalone:true}"
+                   (ngModelChange)="aplicarFiltroLocal()"
+                   style="min-width:200px">
+          <nz-option nzValue="todos" nzLabel="Todos os cadastros"></nz-option>
+          <nz-option nzValue="sem-telefone" nzLabel="Sem telefone"></nz-option>
+          <nz-option nzValue="sem-rg" nzLabel="Sem RG"></nz-option>
+          <nz-option nzValue="sem-ambos" nzLabel="Sem telefone e sem RG"></nz-option>
+        </nz-select>
         <button nz-button nzType="link" nzDanger
-                *ngIf="busca || somenteQuitados"
+                *ngIf="busca || somenteQuitados || filtroIncompletos !== 'todos'"
                 (click)="limparFiltros()">
           <span nz-icon nzType="close-circle"></span> Limpar
         </button>
@@ -284,11 +301,9 @@ import { Inscricao, Parcela, Participante } from '../shared/models';
           <nz-form-item>
             <nz-form-label>CPF</nz-form-label>
             <nz-form-control nzErrorTip="CPF inválido — verifique os dígitos">
-              <input *ngIf="!editando" nz-input formControlName="cpf"
+              <input nz-input formControlName="cpf"
                      placeholder="000.000.000-00" maxlength="14"
                      (input)="mascaraCpf($event)" />
-              <input *ngIf="editando" nz-input [value]="editando.cpf || '—'"
-                     disabled style="background:#f5f5f5; color:#aaa; cursor:not-allowed" />
             </nz-form-control>
           </nz-form-item>
           <nz-form-item>
@@ -356,13 +371,16 @@ import { Inscricao, Parcela, Participante } from '../shared/models';
 })
 export class ParticipantesListComponent implements OnInit, OnDestroy {
   excursaoAtiva = inject(ExcursaoAtivaService);
+  private listaPdf = inject(ListaPdfService);
 
   participantes: Participante[] = [];
+  private participantesCarregados: Participante[] = [];
   carregando = true;
   modalVisivel = false;
   salvando = false;
   busca = '';
   somenteQuitados = false;
+  filtroIncompletos: 'todos' | 'sem-telefone' | 'sem-rg' | 'sem-ambos' = 'todos';
   form!: ReturnType<typeof this.criarForm>;
 
   editando: Participante | null = null;
@@ -448,12 +466,36 @@ export class ParticipantesListComponent implements OnInit, OnDestroy {
         return this.api.get<Participante[]>('participantes', Object.keys(params).length ? params : undefined);
       }),
     ).subscribe({
-      next: (data) => { this.participantes = data; this.carregando = false; },
+      next: (data) => {
+        this.participantesCarregados = data;
+        this.aplicarFiltroLocal();
+        this.carregando = false;
+      },
       error: () => { this.carregando = false; },
     });
   }
 
   ngOnDestroy() { this.buscaSub?.unsubscribe(); }
+
+  exportarPdf() {
+    if (this.participantes.length === 0) {
+      this.message.info('Nenhum participante para exportar.');
+      return;
+    }
+    this.listaPdf.gerarListaParticipantes(this.participantes, this.filtroIncompletos);
+  }
+
+  aplicarFiltroLocal() {
+    let arr = this.participantesCarregados;
+    if (this.filtroIncompletos === 'sem-telefone') {
+      arr = arr.filter((p) => !p.telefone);
+    } else if (this.filtroIncompletos === 'sem-rg') {
+      arr = arr.filter((p) => !p.rg);
+    } else if (this.filtroIncompletos === 'sem-ambos') {
+      arr = arr.filter((p) => !p.telefone && !p.rg);
+    }
+    this.participantes = arr;
+  }
 
   onBusca() { this.buscaSubject.next(this.busca); }
 
@@ -462,7 +504,12 @@ export class ParticipantesListComponent implements OnInit, OnDestroy {
     this.buscaSubject.next(this.busca);
   }
 
-  limparFiltros() { this.busca = ''; this.somenteQuitados = false; this.carregar(); }
+  limparFiltros() {
+    this.busca = '';
+    this.somenteQuitados = false;
+    this.filtroIncompletos = 'todos';
+    this.carregar();
+  }
 
   carregar() {
     this.carregando = true;
@@ -474,7 +521,11 @@ export class ParticipantesListComponent implements OnInit, OnDestroy {
       params['somenteQuitados'] = 'true';
     }
     this.api.get<Participante[]>('participantes', Object.keys(params).length ? params : undefined).subscribe({
-      next: (data) => { this.participantes = data; this.carregando = false; },
+      next: (data) => {
+        this.participantesCarregados = data;
+        this.aplicarFiltroLocal();
+        this.carregando = false;
+      },
       error: () => { this.carregando = false; },
     });
   }
@@ -507,7 +558,7 @@ export class ParticipantesListComponent implements OnInit, OnDestroy {
   abrirEdicao(p: Participante) {
     this.editando = p;
     this.form.reset();
-    this.form.patchValue({ nome: p.nome, rg: p.rg ?? '', telefone: p.telefone ?? '' });
+    this.form.patchValue({ nome: p.nome, cpf: p.cpf ?? '', rg: p.rg ?? '', telefone: p.telefone ?? '' });
     this.modalVisivel = true;
   }
 
@@ -521,6 +572,7 @@ export class ParticipantesListComponent implements OnInit, OnDestroy {
 
     if (this.editando) {
       const body: ParticipanteBody = { nome: v.nome ?? '' };
+      if (v.cpf) body.cpf = v.cpf;
       if (v.rg !== null) body.rg = v.rg;
       if (v.telefone !== null) body.telefone = v.telefone;
       this.api.patch<Participante>(`participantes/${this.editando.id}`, body).subscribe({

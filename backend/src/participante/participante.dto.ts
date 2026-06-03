@@ -11,9 +11,7 @@ export const CriarParticipanteSchema = z.object({
   telefone: z.string().optional(),
 });
 
-export const AtualizarParticipanteSchema = CriarParticipanteSchema.omit({
-  cpf: true,
-}).partial();
+export const AtualizarParticipanteSchema = CriarParticipanteSchema.partial();
 
 export type CriarParticipanteDto = z.infer<typeof CriarParticipanteSchema>;
 export type AtualizarParticipanteDto = z.infer<

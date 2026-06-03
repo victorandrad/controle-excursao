@@ -87,6 +87,12 @@ export class ParticipanteService {
 
   async atualizar(id: string, dto: AtualizarParticipanteDto) {
     await this.buscar(id);
+    if (dto.cpf) {
+      const existe = await this.prisma.participante.findFirst({
+        where: { cpf: dto.cpf, NOT: { id } },
+      });
+      if (existe) throw new ConflictException('CPF já cadastrado');
+    }
     return this.prisma.participante.update({ where: { id }, data: dto });
   }
 }
